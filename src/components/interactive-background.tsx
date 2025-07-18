@@ -28,27 +28,22 @@ class Vortex {
   }
 }
 
-// Class for the "Spacetime Rip" effect on left-click
-class SpacetimeRip {
+// Class for the "Chain Lightning" bolts
+class LightningBolt {
     x1: number;
     y1: number;
     x2: number;
     y2: number;
     life: number;
     maxLife: number;
-    strength: number;
 
-    constructor(x: number, y: number) {
-        this.maxLife = 90; // How long the rip stays open
+    constructor(p1: Particle, p2: Particle) {
+        this.x1 = p1.x;
+        this.y1 = p1.y;
+        this.x2 = p2.x;
+        this.y2 = p2.y;
+        this.maxLife = 30; // How long the bolt stays visible
         this.life = this.maxLife;
-        this.strength = 1.5;
-
-        const angle = Math.random() * Math.PI * 2;
-        const length = Math.random() * 200 + 150; // Random length
-        this.x1 = x - (Math.cos(angle) * length) / 2;
-        this.y1 = y - (Math.sin(angle) * length) / 2;
-        this.x2 = x + (Math.cos(angle) * length) / 2;
-        this.y2 = y + (Math.sin(angle) * length) / 2;
     }
 
     update() {
@@ -68,7 +63,7 @@ export default function InteractiveBackground() {
     radius: 100,
   });
   const vorticesRef = useRef<Vortex[]>([]);
-  const ripsRef = useRef<SpacetimeRip[]>([]);
+  const lightningBoltsRef = useRef<LightningBolt[]>([]);
 
 
   class Particle {
@@ -80,7 +75,7 @@ export default function InteractiveBackground() {
     color: string;
     vx: number;
     vy: number;
-    isRipped: number = 0;
+    isStruck: number = 0; // Countdown timer for the lightning effect
     
     private springFactor = 0.02;
     private dampingFactor = 0.92;
@@ -96,39 +91,12 @@ export default function InteractiveBackground() {
       this.vy = 0;
     }
     
-    update(vortices: Vortex[], rips: SpacetimeRip[]) {
-      if (this.isRipped > 0) {
-        this.isRipped--;
-      }
+    update(vortices: Vortex[]) {
+       if (this.isStruck > 0) {
+        this.isStruck--;
+       }
 
-       // 1. Spacetime Rip Interaction
-      for (const rip of rips) {
-          if (rip.life <= 0) continue;
-          
-          const dx = this.x - rip.x1;
-          const dy = this.y - rip.y1;
-          const dxx = rip.x2 - rip.x1;
-          const dyy = rip.y2 - rip.y1;
-
-          const t = ((dx * dxx) + (dy * dyy)) / ((dxx * dxx) + (dyy * dyy));
-          const closestX = t < 0 ? rip.x1 : t > 1 ? rip.x2 : rip.x1 + t * dxx;
-          const closestY = t < 0 ? rip.y1 : t > 1 ? rip.y2 : rip.y1 + t * dyy;
-
-          const dist_dx = closestX - this.x;
-          const dist_dy = closestY - this.y;
-          const distance = Math.sqrt(dist_dx * dist_dx + dist_dy * dist_dy);
-          
-          const effectRadius = 100 * (rip.life / rip.maxLife);
-
-          if (distance < effectRadius) {
-              this.isRipped = rip.life;
-              const force = (effectRadius - distance) / effectRadius;
-              this.vx += (dist_dx / distance) * rip.strength * force;
-              this.vy += (dist_dy / distance) * rip.strength * force;
-          }
-      }
-      
-      // 2. Vortex interaction (right-click)
+      // 1. Vortex interaction (right-click)
       for (const vortex of vortices) {
         if (vortex.life <= 0) continue;
         const dx_vortex = vortex.x - this.x;
@@ -150,7 +118,7 @@ export default function InteractiveBackground() {
         }
       }
 
-      // 3. Mouse repulsion
+      // 2. Mouse repulsion
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
         const dx_mouse = this.x - mouseRef.current.x;
         const dy_mouse = this.y - mouseRef.current.y;
@@ -165,7 +133,7 @@ export default function InteractiveBackground() {
         }
       }
 
-      // 4. Spring-back force (Jelly effect)
+      // 3. Spring-back force (Jelly effect)
       const dx_base = this.baseX - this.x;
       const dy_base = this.baseY - this.y;
       
@@ -175,37 +143,29 @@ export default function InteractiveBackground() {
       this.vx += springForceX;
       this.vy += springForceY;
       
-      // 5. Apply damping (friction)
+      // 4. Apply damping (friction)
       this.vx *= this.dampingFactor;
       this.vy *= this.dampingFactor;
       
-      // 6. Update position
+      // 5. Update position
       this.x += this.vx;
       this.y += this.vy;
     }
     
     draw() {
-      this.ctx.shadowBlur = 0;
-      
-      if(this.isRipped > 0){
-          const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-          const stretchLength = 1 + speed * 2;
-          const angle = Math.atan2(this.vy, this.vx);
-          
-          this.ctx.strokeStyle = `hsla(195, 100%, 70%, ${this.isRipped / 90})`;
-          this.ctx.lineWidth = this.size > 1.5 ? 1.5 : 1;
-          this.ctx.beginPath();
-          this.ctx.moveTo(this.x - Math.cos(angle) * stretchLength, this.y - Math.sin(angle) * stretchLength);
-          this.ctx.lineTo(this.x + Math.cos(angle) * stretchLength, this.y + Math.sin(angle) * stretchLength);
-          this.ctx.stroke();
-
+      if (this.isStruck > 0) {
+        this.ctx.fillStyle = `hsla(195, 100%, 80%, ${this.isStruck / 60})`;
+        this.ctx.shadowColor = 'white';
+        this.ctx.shadowBlur = 10;
       } else {
         this.ctx.fillStyle = this.color;
-        this.ctx.beginPath();
-        this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        this.ctx.closePath();
-        this.ctx.fill();
+        this.ctx.shadowBlur = 0;
       }
+      this.ctx.beginPath();
+      this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.shadowBlur = 0; // Reset shadow blur
     }
   }
 
@@ -241,7 +201,49 @@ export default function InteractiveBackground() {
     };
 
     const handleLeftClick = (event: globalThis.MouseEvent) => {
-      ripsRef.current.push(new SpacetimeRip(event.x, event.y));
+        const particles = particlesRef.current;
+        let closestParticle: Particle | null = null;
+        let minDistance = Infinity;
+
+        // Find the closest particle to the click
+        for (const p of particles) {
+            const dist = Math.hypot(p.x - event.x, p.y - event.y);
+            if (dist < minDistance) {
+                minDistance = dist;
+                closestParticle = p;
+            }
+        }
+        
+        if (!closestParticle) return;
+        
+        const chainLength = 15;
+        const searchRadius = 100;
+        let currentParticle = closestParticle;
+
+        for (let i = 0; i < chainLength; i++) {
+            if (!currentParticle) break;
+            currentParticle.isStruck = 60; // Set timer for glow effect
+
+            let nextParticle: Particle | null = null;
+            let nextMinDistance = Infinity;
+            
+            // Find the nearest un-struck particle
+            for (const p of particles) {
+                if (p === currentParticle || p.isStruck > 0) continue;
+                const dist = Math.hypot(currentParticle.x - p.x, currentParticle.y - p.y);
+                if (dist < nextMinDistance && dist < searchRadius) {
+                    nextMinDistance = dist;
+                    nextParticle = p;
+                }
+            }
+
+            if (nextParticle) {
+                lightningBoltsRef.current.push(new LightningBolt(currentParticle, nextParticle));
+                currentParticle = nextParticle;
+            } else {
+                break; // End of chain
+            }
+        }
     };
 
     const handleRightClick = (event: globalThis.MouseEvent) => {
@@ -261,31 +263,29 @@ export default function InteractiveBackground() {
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      ripsRef.current = ripsRef.current.filter(r => r.life > 0);
-      ripsRef.current.forEach(r => r.update());
-      
       vorticesRef.current = vorticesRef.current.filter(v => v.life > 0);
       vorticesRef.current.forEach(v => v.update());
 
+      lightningBoltsRef.current = lightningBoltsRef.current.filter(b => b.life > 0);
+      lightningBoltsRef.current.forEach(b => b.update());
+
       particlesRef.current.forEach(p => {
-        p.update(vorticesRef.current, ripsRef.current);
+        p.update(vorticesRef.current);
         p.draw();
       });
 
-      // Draw Rips
-      ripsRef.current.forEach(rip => {
-          const lifeRatio = rip.life / rip.maxLife;
-          const gradient = ctx.createLinearGradient(rip.x1, rip.y1, rip.x2, rip.y2);
-          gradient.addColorStop(0, `rgba(0,0,0,0)`);
-          gradient.addColorStop(0.5, `rgba(20, 20, 30, ${lifeRatio * 0.8})`);
-          gradient.addColorStop(1, `rgba(0,0,0,0)`);
-          
-          ctx.strokeStyle = gradient;
-          ctx.lineWidth = Math.sin(lifeRatio * Math.PI) * 20; // Pulsates
-          ctx.beginPath();
-          ctx.moveTo(rip.x1, rip.y1);
-          ctx.lineTo(rip.x2, rip.y2);
-          ctx.stroke();
+      // Draw Lightning Bolts
+      lightningBoltsRef.current.forEach(bolt => {
+        const lifeRatio = bolt.life / bolt.maxLife;
+        ctx.strokeStyle = `hsla(195, 100%, 80%, ${lifeRatio})`;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = 'white';
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.moveTo(bolt.x1, bolt.y1);
+        ctx.lineTo(bolt.x2, bolt.y2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
       });
 
       animationFrameId = requestAnimationFrame(animate);
