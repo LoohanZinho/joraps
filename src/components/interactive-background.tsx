@@ -1,6 +1,12 @@
 "use client";
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
+
+type Lightning = {
+  from: Particle;
+  to: Particle;
+  life: number;
+};
 
 export default function InteractiveBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -10,35 +16,8 @@ export default function InteractiveBackground() {
     y: null,
     radius: 100,
   });
-  const shockwavesRef = useRef<Shockwave[]>([]);
   const vorticesRef = useRef<Vortex[]>([]);
-
-  // Class for the "Glitch Vortex" effect on left-click
-  class Shockwave {
-    x: number;
-    y: number;
-    strength: number;
-    maxStrength: number;
-    radius: number;
-    life: number;
-    maxLife: number;
-
-    constructor(x: number, y: number) {
-      this.x = x;
-      this.y = y;
-      this.maxStrength = 5; // Very strong initial repulsive force
-      this.strength = this.maxStrength;
-      this.radius = 300; // Large area of effect
-      this.maxLife = 120; // How long the chaos lasts
-      this.life = this.maxLife;
-    }
-
-    update() {
-      this.life--;
-      // The strength of the vortex diminishes over its lifetime
-      this.strength = this.maxStrength * (this.life / this.maxLife);
-    }
-  }
+  const lightningRef = useRef<Lightning[]>([]);
 
   // Class for the "Vortex" black hole effect on right-click
   class Vortex {
@@ -75,7 +54,7 @@ export default function InteractiveBackground() {
     color: string;
     vx: number;
     vy: number;
-    isGlitching: boolean = false;
+    isElectrified: number = 0; // Use a number as a timer for the effect
     
     private springFactor = 0.02;
     private dampingFactor = 0.92;
@@ -91,35 +70,12 @@ export default function InteractiveBackground() {
       this.vy = 0;
     }
     
-    update(shockwaves: Shockwave[], vortices: Vortex[]) {
-      this.isGlitching = false;
-
-      // 1. "Glitch Vortex" interaction (left-click)
-      for (const wave of shockwaves) {
-        if (wave.life <= 0) continue;
-        const dx_wave = this.x - wave.x;
-        const dy_wave = this.y - wave.y;
-        const distance_wave = Math.sqrt(dx_wave * dx_wave + dy_wave * dy_wave);
-
-        if (distance_wave < wave.radius) {
-          const force = (wave.radius - distance_wave) / wave.radius;
-          const angle = Math.atan2(dy_wave, dx_wave);
-          
-          // Repulsive force pushing away
-          const pushX = Math.cos(angle) * wave.strength * force;
-          const pushY = Math.sin(angle) * wave.strength * force;
-
-          // Tangential force for chaotic rotation
-          const tangentialX = Math.sin(angle) * wave.strength * force * 0.5;
-          const tangentialY = -Math.cos(angle) * wave.strength * force * 0.5;
-          
-          this.vx += pushX + tangentialX;
-          this.vy += pushY + tangentialY;
-          this.isGlitching = true;
-        }
+    update(vortices: Vortex[]) {
+      if (this.isElectrified > 0) {
+        this.isElectrified--;
       }
-
-      // 2. Vortex interaction (right-click)
+      
+      // 1. Vortex interaction (right-click)
       for (const vortex of vortices) {
         if (vortex.life <= 0) continue;
         const dx_vortex = vortex.x - this.x;
@@ -141,8 +97,7 @@ export default function InteractiveBackground() {
         }
       }
 
-
-      // 3. Mouse repulsion
+      // 2. Mouse repulsion
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
         const dx_mouse = this.x - mouseRef.current.x;
         const dy_mouse = this.y - mouseRef.current.y;
@@ -157,7 +112,7 @@ export default function InteractiveBackground() {
         }
       }
 
-      // 4. Spring-back force (Jelly effect)
+      // 3. Spring-back force (Jelly effect)
       const dx_base = this.baseX - this.x;
       const dy_base = this.baseY - this.y;
       
@@ -167,27 +122,88 @@ export default function InteractiveBackground() {
       this.vx += springForceX;
       this.vy += springForceY;
       
-      // 5. Apply damping (friction)
+      // 4. Apply damping (friction)
       this.vx *= this.dampingFactor;
       this.vy *= this.dampingFactor;
       
-      // 6. Update position
+      // 5. Update position
       this.x += this.vx;
       this.y += this.vy;
     }
     
     draw() {
-      if (this.isGlitching && Math.random() > 0.9) {
-          this.ctx.fillStyle = Math.random() > 0.5 ? 'hsl(0, 100%, 50%)' : 'hsl(210, 100%, 80%)';
+      if (this.isElectrified > 0) {
+        this.ctx.fillStyle = `hsl(180, 100%, 80%)`; // Bright cyan for electrified particles
+        this.ctx.shadowBlur = 10;
+        this.ctx.shadowColor = `hsl(180, 100%, 80%)`;
       } else {
         this.ctx.fillStyle = this.color;
+        this.ctx.shadowBlur = 0;
       }
       this.ctx.beginPath();
       this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
       this.ctx.closePath();
       this.ctx.fill();
+      this.ctx.shadowBlur = 0; // Reset shadow for next particle
     }
   }
+
+  const findClosestParticle = useCallback((x: number, y: number, ignoreElectrified: boolean) => {
+    let closestParticle: Particle | null = null;
+    let minDistance = Infinity;
+
+    for (const particle of particlesRef.current) {
+      if (ignoreElectrified && particle.isElectrified > 0) continue;
+
+      const dx = particle.x - x;
+      const dy = particle.y - y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestParticle = particle;
+      }
+    }
+    return closestParticle;
+  }, []);
+
+  const triggerChainLightning = useCallback((startX: number, startY: number) => {
+    const MAX_CHAIN_LINKS = 15;
+    const MAX_SEARCH_RADIUS = 200;
+    const EFFECT_DURATION = 30; // Frames
+
+    let currentParticle = findClosestParticle(startX, startY, false);
+    if (!currentParticle) return;
+    
+    currentParticle.isElectrified = EFFECT_DURATION;
+    
+    for (let i = 0; i < MAX_CHAIN_LINKS; i++) {
+        let closestNeighbor: Particle | null = null;
+        let minDistance = MAX_SEARCH_RADIUS;
+
+        for (const otherParticle of particlesRef.current) {
+            if (otherParticle === currentParticle || otherParticle.isElectrified > 0) continue;
+
+            const dx = otherParticle.x - currentParticle.x;
+            const dy = otherParticle.y - currentParticle.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestNeighbor = otherParticle;
+            }
+        }
+        
+        if (closestNeighbor) {
+            lightningRef.current.push({ from: currentParticle, to: closestNeighbor, life: EFFECT_DURATION });
+            closestNeighbor.isElectrified = EFFECT_DURATION;
+            currentParticle = closestNeighbor;
+        } else {
+            break; // No more neighbors found in range
+        }
+    }
+  }, [findClosestParticle]);
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -220,7 +236,7 @@ export default function InteractiveBackground() {
     };
 
     const handleLeftClick = (event: globalThis.MouseEvent) => {
-      shockwavesRef.current.push(new Shockwave(event.x, event.y));
+      triggerChainLightning(event.x, event.y);
     };
 
     const handleRightClick = (event: globalThis.MouseEvent) => {
@@ -240,17 +256,26 @@ export default function InteractiveBackground() {
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      shockwavesRef.current = shockwavesRef.current.filter(sw => sw.life > 0);
-      shockwavesRef.current.forEach(sw => sw.update());
-      
       vorticesRef.current = vorticesRef.current.filter(v => v.life > 0);
       vorticesRef.current.forEach(v => v.update());
 
       particlesRef.current.forEach(p => {
-        p.update(shockwavesRef.current, vorticesRef.current);
+        p.update(vorticesRef.current);
         p.draw();
       });
-      
+
+      // Draw lightning
+      lightningRef.current = lightningRef.current.filter(l => l.life > 0);
+      lightningRef.current.forEach(l => {
+          l.life--;
+          ctx.beginPath();
+          ctx.moveTo(l.from.x, l.from.y);
+          ctx.lineTo(l.to.x, l.to.y);
+          ctx.strokeStyle = `rgba(173, 216, 230, ${l.life / 30 * 0.8})`; // Light blue, fades out
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+      });
+
       animationFrameId = requestAnimationFrame(animate);
     };
     
@@ -262,7 +287,6 @@ export default function InteractiveBackground() {
     window.addEventListener('click', handleLeftClick);
     window.addEventListener('contextmenu', handleRightClick);
 
-
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
@@ -271,7 +295,7 @@ export default function InteractiveBackground() {
       window.removeEventListener('click', handleLeftClick);
       window.removeEventListener('contextmenu', handleRightClick);
     };
-  }, []);
+  }, [triggerChainLightning]);
 
   return <canvas ref={canvasRef} className="fixed top-0 left-0 -z-10 bg-background" />;
 }
