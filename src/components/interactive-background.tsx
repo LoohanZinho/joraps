@@ -2,13 +2,51 @@
 
 import { useRef, useEffect } from 'react';
 
+// Classe para as ondas de choque criadas pelo clique
+class Shockwave {
+  x: number;
+  y: number;
+  radius: number;
+  maxRadius: number;
+  speed: number;
+  life: number;
+
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+    this.radius = 1;
+    this.maxRadius = 150; // O quão longe a onda vai
+    this.speed = 5;      // Velocidade de expansão da onda
+    this.life = 1;       // Força da onda (diminui com o tempo)
+  }
+
+  update() {
+    if (this.life > 0) {
+      this.radius += this.speed;
+      // A força da onda diminui à medida que ela se expande
+      this.life -= 0.025; 
+    }
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    if (this.life > 0) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(0, 0%, 100%, ${this.life * 0.2})`; // Efeito visual sutil da onda
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+}
+
 export default function InteractiveBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
+  const shockwavesRef = useRef<Shockwave[]>([]);
   const mouseRef = useRef<{ x: number | null; y: number | null; radius: number }>({
     x: null,
     y: null,
-    radius: 100,
+    radius: 100, // Raio de influência do mouse
   });
 
   class Particle {
@@ -33,7 +71,7 @@ export default function InteractiveBackground() {
     }
     
     update() {
-      // Continuous downward movement for the base position
+      // Movimento contínuo de base
       this.baseY += this.speed;
       if (this.baseY > this.canvasHeight + this.size) {
         this.baseY = 0 - this.size;
@@ -43,7 +81,7 @@ export default function InteractiveBackground() {
       let targetX = this.baseX;
       let targetY = this.baseY;
 
-      // Interaction with mouse
+      // Interação com o mouse
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
         const dx = mouseRef.current.x - this.x;
         const dy = mouseRef.current.y - this.y;
@@ -60,8 +98,26 @@ export default function InteractiveBackground() {
           targetY = this.y - directionY;
         }
       }
+      
+      // Interação com as ondas de choque
+      shockwavesRef.current.forEach(wave => {
+        if (wave.life > 0) {
+          const dx = this.x - wave.x;
+          const dy = this.y - wave.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          // Verifica se a partícula está perto o suficiente da onda para ser afetada
+          if (distance < wave.radius && distance > wave.radius - 50) {
+            const forceDirectionX = dx / distance;
+            const forceDirectionY = dy / distance;
+            // A força é maior no início da vida da onda
+            targetX += forceDirectionX * 10 * wave.life;
+            targetY += forceDirectionY * 10 * wave.life;
+          }
+        }
+      });
 
-      // Smoothly move towards the target position
+      // Move suavemente para a posição alvo
       this.x += (targetX - this.x) / 10;
       this.y += (targetY - this.y) / 10;
     }
@@ -92,7 +148,6 @@ export default function InteractiveBackground() {
     
     const initParticles = () => {
         particlesRef.current = [];
-        // Set a fixed number of particles as requested
         let numberOfParticles = 1500; 
         for (let i = 0; i < numberOfParticles; i++) {
             particlesRef.current.push(new Particle(ctx, canvas.width, canvas.height, particleColor));
@@ -109,12 +164,8 @@ export default function InteractiveBackground() {
         mouseRef.current.y = null;
     };
 
-    const handleClick = () => {
-      const originalRadius = mouseRef.current.radius;
-      mouseRef.current.radius = originalRadius * 2.5; // Shockwave effect
-      setTimeout(() => {
-        mouseRef.current.radius = originalRadius;
-      }, 200);
+    const handleClick = (event: globalThis.MouseEvent) => {
+      shockwavesRef.current.push(new Shockwave(event.x, event.y));
     };
 
     const handleResize = () => {
@@ -128,10 +179,20 @@ export default function InteractiveBackground() {
     let animationFrameId: number;
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Atualiza e desenha partículas
       particlesRef.current.forEach(p => {
         p.update();
         p.draw();
       });
+
+      // Atualiza, desenha e remove ondas de choque "mortas"
+      shockwavesRef.current = shockwavesRef.current.filter(wave => {
+        wave.update();
+        // wave.draw(ctx); // Descomente para ver o círculo da onda de choque
+        return wave.life > 0;
+      });
+      
       animationFrameId = requestAnimationFrame(animate);
     };
     
