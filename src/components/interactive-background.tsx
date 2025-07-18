@@ -8,15 +8,43 @@ export default function InteractiveBackground() {
   const mouseRef = useRef<{ x: number | null; y: number | null; radius: number }>({
     x: null,
     y: null,
-    radius: 150, 
+    radius: 100,
   });
+  const shockwavesRef = useRef<Shockwave[]>([]);
   const vorticesRef = useRef<Vortex[]>([]);
 
+  // Class for the "jelly" explosion effect
+  class Shockwave {
+    x: number;
+    y: number;
+    radius: number;
+    maxRadius: number;
+    strength: number;
+    life: number = 1;
+
+    constructor(x: number, y: number) {
+      this.x = x;
+      this.y = y;
+      this.radius = 0;
+      this.maxRadius = 300; // How far the wave travels
+      this.strength = 0.5; // Initial push force
+    }
+
+    update() {
+      // The wave expands and fades in strength
+      this.radius += 5;
+      if (this.radius > this.maxRadius) {
+        this.life = 0;
+      }
+    }
+  }
+
+  // Class for the "vortex" black hole effect
   class Vortex {
     x: number;
     y: number;
-    maxStrength: number;
     strength: number;
+    maxStrength: number;
     radius: number;
     life: number;
     maxLife: number;
@@ -27,7 +55,7 @@ export default function InteractiveBackground() {
       this.maxStrength = 2; // Increased strength for a more dramatic pull
       this.strength = this.maxStrength;
       this.radius = 250; // The area of effect for the vortex
-      this.maxLife = 120; // How long the vortex lasts in frames
+      this.maxLife = 180; // How long the vortex lasts in frames
       this.life = this.maxLife;
     }
 
@@ -48,8 +76,9 @@ export default function InteractiveBackground() {
     vx: number;
     vy: number;
     
-    private springFactor = 0.02; // How strongly it returns to base
-    private dampingFactor = 0.92; // Friction to stop oscillations
+    // Jelly effect physics
+    private springFactor = 0.02;
+    private dampingFactor = 0.92;
 
     constructor(private ctx: CanvasRenderingContext2D, private canvasWidth: number, private canvasHeight: number) {
       this.x = Math.random() * canvasWidth;
@@ -57,15 +86,13 @@ export default function InteractiveBackground() {
       this.baseX = this.x;
       this.baseY = this.y;
       this.size = Math.random() * 2 + 0.5;
-      this.color = `hsl(210, 82%, 54%)`; // Primary color
+      this.color = `hsl(210, 82%, 54%)`;
       this.vx = 0;
       this.vy = 0;
     }
     
-    update(vortices: Vortex[]) {
-      let inVortex = false;
-
-      // 1. Vortex interaction
+    update(shockwaves: Shockwave[], vortices: Vortex[]) {
+      // 1. Vortex interaction (strongest effect)
       for (const vortex of vortices) {
         if (vortex.life <= 0) continue;
         const dx_vortex = vortex.x - this.x;
@@ -73,7 +100,6 @@ export default function InteractiveBackground() {
         const distance_vortex = Math.sqrt(dx_vortex * dx_vortex + dy_vortex * dy_vortex);
 
         if (distance_vortex < vortex.radius) {
-          inVortex = true;
           const force = (vortex.radius - distance_vortex) / vortex.radius;
           const angle = Math.atan2(dy_vortex, dx_vortex);
 
@@ -82,7 +108,7 @@ export default function InteractiveBackground() {
           const pullY = Math.sin(angle) * vortex.strength * force;
           
           // Tangential force for rotation
-          const tangentialX = -Math.sin(angle) * vortex.strength * force * 0.5; // Adjust multiplier for more/less spin
+          const tangentialX = -Math.sin(angle) * vortex.strength * force * 0.5;
           const tangentialY = Math.cos(angle) * vortex.strength * force * 0.5;
 
           this.vx += pullX + tangentialX;
@@ -90,7 +116,21 @@ export default function InteractiveBackground() {
         }
       }
 
-      // 2. Mouse repulsion (weaker than vortex)
+      // 2. Shockwave interaction (explosion)
+      for (const wave of shockwaves) {
+        const dx_wave = this.x - wave.x;
+        const dy_wave = this.y - wave.y;
+        const distance_wave = Math.sqrt(dx_wave * dx_wave + dy_wave * dy_wave);
+
+        if (distance_wave < wave.radius && distance_wave > wave.radius - 20) {
+           const force = (wave.radius - distance_wave) / wave.radius;
+           const angle = Math.atan2(dy_wave, dx_wave);
+           this.vx += Math.cos(angle) * wave.strength * (1 - force);
+           this.vy += Math.sin(angle) * wave.strength * (1 - force);
+        }
+      }
+
+      // 3. Mouse repulsion
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
         const dx_mouse = this.x - mouseRef.current.x;
         const dy_mouse = this.y - mouseRef.current.y;
@@ -100,13 +140,12 @@ export default function InteractiveBackground() {
           const forceDirectionX = dx_mouse / distance_mouse;
           const forceDirectionY = dy_mouse / distance_mouse;
           const force = (mouseRef.current.radius - distance_mouse) / mouseRef.current.radius;
-          this.vx += forceDirectionX * force * 0.25; // Softer push
-          this.vy += forceDirectionY * force * 0.25;
+          this.vx += forceDirectionX * force * 0.5;
+          this.vy += forceDirectionY * force * 0.5;
         }
       }
 
-      // 3. Spring-back force (Jelly effect)
-      // This force is always active but is overpowered by the vortex
+      // 4. Spring-back force (Jelly effect)
       const dx_base = this.baseX - this.x;
       const dy_base = this.baseY - this.y;
       
@@ -116,11 +155,11 @@ export default function InteractiveBackground() {
       this.vx += springForceX;
       this.vy += springForceY;
       
-      // 4. Apply damping
+      // 5. Apply damping (friction)
       this.vx *= this.dampingFactor;
       this.vy *= this.dampingFactor;
       
-      // 5. Update position
+      // 6. Update position
       this.x += this.vx;
       this.y += this.vy;
     }
@@ -164,7 +203,12 @@ export default function InteractiveBackground() {
         mouseRef.current.y = null;
     };
 
-    const handleClick = (event: globalThis.MouseEvent) => {
+    const handleLeftClick = (event: globalThis.MouseEvent) => {
+      shockwavesRef.current.push(new Shockwave(event.x, event.y));
+    };
+
+    const handleRightClick = (event: globalThis.MouseEvent) => {
+      event.preventDefault(); // Prevent context menu from appearing
       vorticesRef.current.push(new Vortex(event.x, event.y));
     };
 
@@ -180,12 +224,15 @@ export default function InteractiveBackground() {
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Update and filter out old vortices
+      // Update and filter out old shockwaves and vortices
+      shockwavesRef.current = shockwavesRef.current.filter(sw => sw.life > 0);
+      shockwavesRef.current.forEach(sw => sw.update());
+      
       vorticesRef.current = vorticesRef.current.filter(v => v.life > 0);
       vorticesRef.current.forEach(v => v.update());
 
       particlesRef.current.forEach(p => {
-        p.update(vorticesRef.current);
+        p.update(shockwavesRef.current, vorticesRef.current);
         p.draw();
       });
       
@@ -197,14 +244,17 @@ export default function InteractiveBackground() {
     window.addEventListener('resize', handleResize);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseleave', handleMouseLeave);
-    window.addEventListener('click', handleClick);
+    window.addEventListener('click', handleLeftClick);
+       window.addEventListener('contextmenu', handleRightClick);
+
 
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseleave', handleMouseLeave);
-      window.removeEventListener('click', handleClick);
+      window.removeEventListener('click', handleLeftClick);
+         window.removeEventListener('contextmenu', handleRightClick);
     };
   }, []);
 
