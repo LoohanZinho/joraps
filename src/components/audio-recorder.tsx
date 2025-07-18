@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import AudioVisualizer from "./audio-visualizer";
+import { transcribeAudio, expandText, rewriteText } from "@/ai/client";
 
 type Status = "idle" | "recording" | "paused" | "processing" | "ready" | "error";
 type AiActionStatus = "idle" | "processing" | "error";
@@ -19,27 +20,6 @@ type AiActionStatus = "idle" | "processing" | "error";
 interface TranscriptionHistoryItem {
   text: string;
   date: string;
-}
-
-async function callAiApi(action: string, payload: object) {
-  const response = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, payload }),
-  });
-
-  if (!response.ok) {
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.indexOf('application/json') !== -1) {
-      const errorData = await response.json();
-      throw new Error(errorData.details || errorData.error || 'A chamada à API falhou');
-    } else {
-      const errorText = await response.text();
-      throw new Error(`O servidor retornou um erro inesperado: ${errorText.substring(0, 100)}...`);
-    }
-  }
-
-  return response.json();
 }
 
 export default function AudioRecorder() {
@@ -118,7 +98,7 @@ export default function AudioRecorder() {
 
         if (isCancelledRef.current) return;
 
-        const result = await callAiApi('transcribe', { mimeType, audioData, noiseSuppression: isNoiseSuppressionEnabled });
+        const result = await transcribeAudio(mimeType, audioData, isNoiseSuppressionEnabled);
         
         if (result && result.transcription) {
             const newTranscription = result.transcription;
@@ -143,11 +123,6 @@ export default function AudioRecorder() {
         console.error("Transcription failed:", e);
         setError(getErrorMessage(e));
         setStatus("error");
-    } finally {
-        if (!isCancelledRef.current && status !== 'ready') {
-          // If not successful, but also not cancelled, it must be an error state.
-          // The error state is set within the catch block, so we just avoid overwriting it.
-        }
     }
   }, [isNoiseSuppressionEnabled]);
 
@@ -199,8 +174,11 @@ export default function AudioRecorder() {
 
   const getErrorMessage = (e: unknown): string => {
     let errorMessage = "Ocorreu um erro desconhecido.";
-    if (e instanceof Error && e.message) {
+    if (e instanceof Error) {
         errorMessage = e.message;
+        if (e.message.includes('API key not valid')) {
+          errorMessage = 'A chave de API do Google não é válida. Verifique o arquivo .env.local.'
+        }
     }
     return errorMessage;
   };
@@ -210,7 +188,7 @@ export default function AudioRecorder() {
     setExpansionStatus("processing");
     setError(null);
     try {
-      const result = await callAiApi('expand', { text: transcript });
+      const result = await expandText(transcript);
       setTranscript(result.expandedText);
     } catch (e: unknown) {
       console.error(e);
@@ -225,7 +203,7 @@ export default function AudioRecorder() {
     setRewriteStatus("processing");
     setError(null);
     try {
-      const result = await callAiApi('rewrite', { text: transcript });
+      const result = await rewriteText(transcript);
       setTranscript(result.rewrittenText);
     } catch (e: unknown) {
       console.error(e);
