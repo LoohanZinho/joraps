@@ -178,7 +178,7 @@ export default function InteractiveBackground() {
     
     draw() {
       if (this.isGlitching && Math.random() > 0.9) {
-          this.ctx.fillStyle = Math.random() > 0.5 ? 'hsl(0, 100%, 50%)' : 'hsl(0, 0%, 100%)';
+          this.ctx.fillStyle = Math.random() > 0.5 ? 'hsl(0, 100%, 50%)' : 'hsl(210, 100%, 80%)';
       } else {
         this.ctx.fillStyle = this.color;
       }
