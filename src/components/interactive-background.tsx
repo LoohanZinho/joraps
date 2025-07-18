@@ -77,14 +77,17 @@ export default function InteractiveBackground() {
       const dx_base = this.baseX - this.x;
       const dy_base = this.baseY - this.y;
       const distance_base = Math.sqrt(dx_base * dx_base + dy_base * dy_base);
-      const force_base = distance_base * 0.02; // Quanto mais longe, mais forte a atração
-      this.vx += (dx_base / distance_base) * force_base;
-      this.vy += (dy_base / distance_base) * force_base;
+      // A força de atração é proporcional à distância, fazendo com que as partículas "deslizem" de volta ao lugar
+      if (distance_base > 1) {
+          const force_base = distance_base * 0.01;
+          this.vx += (dx_base / distance_base) * force_base;
+          this.vy += (dy_base / distance_base) * force_base;
+      }
 
-      // Movimento contínuo de base (drift)
-      this.baseY += 0.1;
-      if (this.baseY > this.canvasHeight + this.size) {
-        this.baseY = 0 - this.size;
+      // Movimento contínuo de base (drift) para as partículas não ficarem estáticas
+      this.baseY -= 0.1;
+      if (this.baseY < 0 - this.size) {
+        this.baseY = this.canvasHeight + this.size;
         this.baseX = Math.random() * this.canvasWidth;
       }
       
@@ -97,6 +100,7 @@ export default function InteractiveBackground() {
         if (distance_mouse < mouseRef.current.radius) {
           const forceDirectionX = dx_mouse / distance_mouse;
           const forceDirectionY = dy_mouse / distance_mouse;
+          // A força é maior quanto mais perto a partícula está do mouse
           const force = (mouseRef.current.radius - distance_mouse) / mouseRef.current.radius;
           this.vx += forceDirectionX * force * 0.5;
           this.vy += forceDirectionY * force * 0.5;
@@ -110,10 +114,12 @@ export default function InteractiveBackground() {
           const dy_wave = this.y - wave.y;
           const distance_wave = Math.sqrt(dx_wave * dx_wave + dy_wave * dy_wave);
           
-          if (distance_wave < wave.radius && distance_wave > 0) {
+          // Verifica se a partícula está dentro do raio da onda de choque
+          if (distance_wave < wave.radius + this.size && distance_wave > 0) {
             const forceDirectionX = dx_wave / distance_wave;
             const forceDirectionY = dy_wave / distance_wave;
-            const force = (1 - (distance_wave / wave.radius)) * wave.life * 15; // Força da explosão
+            // A força da explosão é maior no início e diminui com a vida da onda
+            const force = (1 - (distance_wave / wave.radius)) * wave.life * 15;
             this.vx += forceDirectionX * force;
             this.vy += forceDirectionY * force;
           }
@@ -130,10 +136,10 @@ export default function InteractiveBackground() {
     }
     
     draw() {
-      // A cor da partícula muda com a velocidade (mais rápido = mais branco)
+      // A cor da partícula muda com a velocidade (mais rápido = mais branco/brilhante)
       const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-      const brightness = Math.min(speed * 20, 100);
-      this.ctx.fillStyle = `hsl(0, 0%, ${100 - brightness}%)`;
+      const brightness = Math.min(speed * 15, 70); // Controla o quão brilhante a partícula fica
+      this.ctx.fillStyle = `hsl(210, 82%, ${54 + brightness}%)`; // Começa na cor primária e vai para o branco
       this.ctx.beginPath();
       this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
       this.ctx.closePath();
@@ -158,7 +164,7 @@ export default function InteractiveBackground() {
     
     const initParticles = () => {
         particlesRef.current = [];
-        let numberOfParticles = 1500;
+        let numberOfParticles = 1500; 
         for (let i = 0; i < numberOfParticles; i++) {
             particlesRef.current.push(new Particle(ctx, canvas.width, canvas.height, particleColor));
         }
