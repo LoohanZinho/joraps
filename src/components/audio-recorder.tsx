@@ -10,9 +10,6 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { transcribeAudio } from "@/ai/flows/transcribe-audio";
-import { expandText } from "@/ai/flows/expand-text";
-import { rewriteText } from "@/ai/flows/rewrite-text";
 import { cn } from "@/lib/utils";
 import AudioVisualizer from "./audio-visualizer";
 
@@ -22,6 +19,27 @@ type AiActionStatus = "idle" | "processing" | "error";
 interface TranscriptionHistoryItem {
   text: string;
   date: string;
+}
+
+async function callAiApi(action: string, payload: object) {
+  const response = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, payload }),
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.indexOf('application/json') !== -1) {
+      const errorData = await response.json();
+      throw new Error(errorData.details || errorData.error || 'A chamada à API falhou');
+    } else {
+      const errorText = await response.text();
+      throw new Error(`O servidor retornou um erro inesperado: ${errorText.substring(0, 100)}...`);
+    }
+  }
+
+  return response.json();
 }
 
 export default function AudioRecorder() {
@@ -100,7 +118,7 @@ export default function AudioRecorder() {
 
         if (isCancelledRef.current) return;
 
-        const result = await transcribeAudio({ mimeType, audioData, noiseSuppression: isNoiseSuppressionEnabled });
+        const result = await callAiApi('transcribe', { mimeType, audioData, noiseSuppression: isNoiseSuppressionEnabled });
         
         if (result && result.transcription) {
             const newTranscription = result.transcription;
@@ -116,19 +134,19 @@ export default function AudioRecorder() {
               }
               return newHistory;
             });
+            setStatus("ready");
         } else {
-             setError("Não foi possível transcrever o áudio. Tente novamente.");
+             setError("Não foi possível transcrever o áudio. A resposta da IA estava vazia.");
              setStatus("error");
-             return;
         }
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error("Transcription failed:", e);
         setError(getErrorMessage(e));
         setStatus("error");
-        return;
     } finally {
-        if (!isCancelledRef.current) {
-            setStatus("ready");
+        if (!isCancelledRef.current && status !== 'ready') {
+          // If not successful, but also not cancelled, it must be an error state.
+          // The error state is set within the catch block, so we just avoid overwriting it.
         }
     }
   }, [isNoiseSuppressionEnabled]);
@@ -179,16 +197,10 @@ export default function AudioRecorder() {
     });
   };
 
-  const getErrorMessage = (e: any): string => {
+  const getErrorMessage = (e: unknown): string => {
     let errorMessage = "Ocorreu um erro desconhecido.";
-    if (e.message) {
-      if (e.message.includes('503') || e.message.includes('overloaded')) {
-        errorMessage = "O serviço de IA está sobrecarregado após múltiplas tentativas. Por favor, tente novamente mais tarde.";
-      } else if (e.message.includes('Base64 decoding failed') || e.message.includes('invalid argument')) {
-        errorMessage = "Ocorreu um erro ao processar o áudio. A gravação pode estar corrompida ou vazia.";
-      } else {
+    if (e instanceof Error && e.message) {
         errorMessage = e.message;
-      }
     }
     return errorMessage;
   };
@@ -198,9 +210,9 @@ export default function AudioRecorder() {
     setExpansionStatus("processing");
     setError(null);
     try {
-      const result = await expandText({ text: transcript });
+      const result = await callAiApi('expand', { text: transcript });
       setTranscript(result.expandedText);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       setError(getErrorMessage(e));
     } finally {
@@ -213,9 +225,9 @@ export default function AudioRecorder() {
     setRewriteStatus("processing");
     setError(null);
     try {
-      const result = await rewriteText({ text: transcript });
+      const result = await callAiApi('rewrite', { text: transcript });
       setTranscript(result.rewrittenText);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       setError(getErrorMessage(e));
     } finally {
@@ -266,9 +278,31 @@ export default function AudioRecorder() {
       };
 
       mediaRecorderRef.current.start();
-    } catch (err: any) {
-      console.error(err);
-      setError("Acesso ao microfone negado. Por favor, permita o acesso ao microfone nas configurações do seu navegador.");
+    } catch (err: unknown) {
+      console.error("Erro ao iniciar a gravação:", err);
+      let errorMessage = "Ocorreu um erro desconhecido ao tentar acessar o microfone.";
+      if (err instanceof DOMException) {
+          switch (err.name) {
+              case "NotAllowedError":
+                  errorMessage = "Acesso ao microfone negado. Para gravar, clique no ícone de cadeado na barra de endereço do navegador e permita o acesso ao microfone.";
+                  break;
+              case "NotFoundError":
+                  errorMessage = "Nenhum microfone foi encontrado. Por favor, conecte um microfone e tente novamente.";
+                  break;
+              case "NotReadableError":
+                  errorMessage = "O microfone está sendo usado por outro aplicativo ou processo. Por favor, feche-o e tente novamente.";
+                  break;
+              case "AbortError":
+                  errorMessage = "A requisição do microfone foi abortada. Tente novamente.";
+                  break;
+              case "SecurityError":
+                  errorMessage = "Acesso ao microfone bloqueado por razões de segurança. Certifique-se de que a página está sendo acessada via HTTPS.";
+                  break;
+              default:
+                  errorMessage = `Ocorreu um erro inesperado: ${err.name}.`;
+          }
+      }
+      setError(errorMessage);
       setStatus("error");
     }
   }, [handleTranscription]);

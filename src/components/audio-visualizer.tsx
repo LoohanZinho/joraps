@@ -27,7 +27,7 @@ export default function AudioVisualizer({ mediaStream, isSuppressed }: AudioVisu
     const accentColor = computedStyle.getPropertyValue('--accent').trim();
 
     if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContextRef.current = new window.AudioContext();
     }
     const audioContext = audioContextRef.current;
     
@@ -103,10 +103,8 @@ export default function AudioVisualizer({ mediaStream, isSuppressed }: AudioVisu
         cancelAnimationFrame(animationFrameIdRef.current);
       }
       try {
-        // Disconnect from the old stream source if it exists
         source.disconnect();
-      } catch (e) {
-        // Source might already be disconnected, which is fine
+      } catch {
       }
     };
   }, [mediaStream, isSuppressed]);
