@@ -13,29 +13,30 @@ export default function InteractiveBackground() {
   const shockwavesRef = useRef<Shockwave[]>([]);
   const vorticesRef = useRef<Vortex[]>([]);
 
-  // Class for the "Supernova" explosion effect on left-click
+  // Class for the "Glitch Vortex" effect on left-click
   class Shockwave {
     x: number;
     y: number;
-    radius: number;
-    maxRadius: number;
     strength: number;
-    life: number = 1;
+    maxStrength: number;
+    radius: number;
+    life: number;
+    maxLife: number;
 
     constructor(x: number, y: number) {
       this.x = x;
       this.y = y;
-      this.radius = 0;
-      this.maxRadius = 300; // How far the wave travels
-      this.strength = 0.5; // Initial push force
+      this.maxStrength = 5; // Very strong initial repulsive force
+      this.strength = this.maxStrength;
+      this.radius = 300; // Large area of effect
+      this.maxLife = 120; // How long the chaos lasts
+      this.life = this.maxLife;
     }
 
     update() {
-      // The wave expands and fades in strength
-      this.radius += 5;
-      if (this.radius > this.maxRadius) {
-        this.life = 0;
-      }
+      this.life--;
+      // The strength of the vortex diminishes over its lifetime
+      this.strength = this.maxStrength * (this.life / this.maxLife);
     }
   }
 
@@ -52,16 +53,15 @@ export default function InteractiveBackground() {
     constructor(x: number, y: number) {
       this.x = x;
       this.y = y;
-      this.maxStrength = 2; // Increased strength for a more dramatic pull
+      this.maxStrength = 2;
       this.strength = this.maxStrength;
-      this.radius = 250; // The area of effect for the vortex
-      this.maxLife = 180; // How long the vortex lasts in frames
+      this.radius = 250;
+      this.maxLife = 180;
       this.life = this.maxLife;
     }
 
     update() {
       this.life--;
-      // The strength of the vortex diminishes over its lifetime
       this.strength = this.maxStrength * (this.life / this.maxLife);
     }
   }
@@ -75,8 +75,8 @@ export default function InteractiveBackground() {
     color: string;
     vx: number;
     vy: number;
+    isGlitching: boolean = false;
     
-    // Jelly effect physics
     private springFactor = 0.02;
     private dampingFactor = 0.92;
 
@@ -92,7 +92,34 @@ export default function InteractiveBackground() {
     }
     
     update(shockwaves: Shockwave[], vortices: Vortex[]) {
-      // 1. Vortex interaction (strongest effect)
+      this.isGlitching = false;
+
+      // 1. "Glitch Vortex" interaction (left-click)
+      for (const wave of shockwaves) {
+        if (wave.life <= 0) continue;
+        const dx_wave = this.x - wave.x;
+        const dy_wave = this.y - wave.y;
+        const distance_wave = Math.sqrt(dx_wave * dx_wave + dy_wave * dy_wave);
+
+        if (distance_wave < wave.radius) {
+          const force = (wave.radius - distance_wave) / wave.radius;
+          const angle = Math.atan2(dy_wave, dx_wave);
+          
+          // Repulsive force pushing away
+          const pushX = Math.cos(angle) * wave.strength * force;
+          const pushY = Math.sin(angle) * wave.strength * force;
+
+          // Tangential force for chaotic rotation
+          const tangentialX = Math.sin(angle) * wave.strength * force * 0.5;
+          const tangentialY = -Math.cos(angle) * wave.strength * force * 0.5;
+          
+          this.vx += pushX + tangentialX;
+          this.vy += pushY + tangentialY;
+          this.isGlitching = true;
+        }
+      }
+
+      // 2. Vortex interaction (right-click)
       for (const vortex of vortices) {
         if (vortex.life <= 0) continue;
         const dx_vortex = vortex.x - this.x;
@@ -103,11 +130,9 @@ export default function InteractiveBackground() {
           const force = (vortex.radius - distance_vortex) / vortex.radius;
           const angle = Math.atan2(dy_vortex, dx_vortex);
 
-          // Force pulling towards the center
           const pullX = Math.cos(angle) * vortex.strength * force;
           const pullY = Math.sin(angle) * vortex.strength * force;
           
-          // Tangential force for rotation
           const tangentialX = -Math.sin(angle) * vortex.strength * force * 0.5;
           const tangentialY = Math.cos(angle) * vortex.strength * force * 0.5;
 
@@ -116,19 +141,6 @@ export default function InteractiveBackground() {
         }
       }
 
-      // 2. Shockwave interaction (Supernova explosion)
-      for (const wave of shockwaves) {
-        const dx_wave = this.x - wave.x;
-        const dy_wave = this.y - wave.y;
-        const distance_wave = Math.sqrt(dx_wave * dx_wave + dy_wave * dy_wave);
-
-        if (distance_wave < wave.radius && distance_wave > wave.radius - 20) {
-           const force = (wave.radius - distance_wave) / wave.radius;
-           const angle = Math.atan2(dy_wave, dx_wave);
-           this.vx += Math.cos(angle) * wave.strength * (1 - force);
-           this.vy += Math.sin(angle) * wave.strength * (1 - force);
-        }
-      }
 
       // 3. Mouse repulsion
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
@@ -165,7 +177,11 @@ export default function InteractiveBackground() {
     }
     
     draw() {
-      this.ctx.fillStyle = this.color;
+      if (this.isGlitching && Math.random() > 0.9) {
+          this.ctx.fillStyle = Math.random() > 0.5 ? 'hsl(0, 100%, 50%)' : 'hsl(0, 0%, 100%)';
+      } else {
+        this.ctx.fillStyle = this.color;
+      }
       this.ctx.beginPath();
       this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
       this.ctx.closePath();
@@ -224,7 +240,6 @@ export default function InteractiveBackground() {
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Update and filter out old shockwaves and vortices
       shockwavesRef.current = shockwavesRef.current.filter(sw => sw.life > 0);
       shockwavesRef.current.forEach(sw => sw.update());
       
