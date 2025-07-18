@@ -33,9 +33,18 @@ export default function InteractiveBackground() {
     }
     
     update() {
-      // Continuous downward movement
-      this.y += this.speed;
+      // Continuous downward movement for the base position
       this.baseY += this.speed;
+
+      // Reset base position if it goes off screen
+      if (this.baseY > this.canvasHeight + this.size) {
+          this.baseY = 0 - this.size;
+          this.baseX = Math.random() * this.canvasWidth;
+      }
+      
+      // Start with the base position
+      let targetX = this.baseX;
+      let targetY = this.baseY;
 
       // Interaction with mouse
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
@@ -50,29 +59,21 @@ export default function InteractiveBackground() {
           const directionX = forceDirectionX * force * this.density;
           const directionY = forceDirectionY * force * this.density;
           
-          this.x -= directionX;
-          this.y -= directionY;
-        } else {
-           // Return to base position smoothly if not interacting
-          if (this.x !== this.baseX) {
-            const dxReturn = this.x - this.baseX;
-            this.x -= dxReturn / 10;
-          }
-          if (this.y !== this.baseY) {
-            const dyReturn = this.y - this.baseY;
-            this.y -= dyReturn / 10;
-          }
+          targetX = this.x - directionX;
+          targetY = this.y - directionY;
         }
       }
-      
+
+      // Smoothly move towards the target position
+      this.x += (targetX - this.x) / 10;
+      this.y += (targetY - this.y) / 10;
+
       // If particle goes off screen, reset its position to the top
       if (this.y > this.canvasHeight + this.size) {
         this.y = 0 - this.size;
         this.x = Math.random() * this.canvasWidth;
         this.baseX = this.x;
         this.baseY = this.y;
-        this.size = Math.random() * 2 + 0.5;
-        this.speed = Math.random() * 0.5 + 0.1;
       }
     }
     
@@ -102,13 +103,13 @@ export default function InteractiveBackground() {
     
     const initParticles = () => {
         particlesRef.current = [];
-        let numberOfParticles = (canvas.width * canvas.height) / 9000;
+        let numberOfParticles = (canvas.width * canvas.height) / 4000; // Increased density
         for (let i = 0; i < numberOfParticles; i++) {
             particlesRef.current.push(new Particle(ctx, canvas.width, canvas.height, particleColor));
         }
     };
 
-    const handleMouseMove = (event: MouseEvent) => {
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
         mouseRef.current.x = event.x;
         mouseRef.current.y = event.y;
     };
@@ -147,18 +148,16 @@ export default function InteractiveBackground() {
     animate();
 
     window.addEventListener('resize', handleResize);
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('mouseleave', handleMouseLeave);
-    canvas.addEventListener('click', handleClick);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseleave', handleMouseLeave);
+    window.addEventListener('click', handleClick);
 
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
-      if (canvas) {
-        canvas.removeEventListener('mousemove', handleMouseMove);
-        canvas.removeEventListener('mouseleave', handleMouseLeave);
-        canvas.removeEventListener('click', handleClick);
-      }
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseleave', handleMouseLeave);
+      window.removeEventListener('click', handleClick);
     };
   }, []);
 
