@@ -8,8 +8,35 @@ export default function InteractiveBackground() {
   const mouseRef = useRef<{ x: number | null; y: number | null; radius: number }>({
     x: null,
     y: null,
-    radius: 100, // Raio de influência do mouse
+    radius: 150, 
   });
+  const vorticesRef = useRef<Vortex[]>([]);
+
+  class Vortex {
+    x: number;
+    y: number;
+    maxStrength: number;
+    strength: number;
+    radius: number;
+    life: number;
+    maxLife: number;
+
+    constructor(x: number, y: number) {
+      this.x = x;
+      this.y = y;
+      this.maxStrength = 2; // Increased strength for a more dramatic pull
+      this.strength = this.maxStrength;
+      this.radius = 250; // The area of effect for the vortex
+      this.maxLife = 120; // How long the vortex lasts in frames
+      this.life = this.maxLife;
+    }
+
+    update() {
+      this.life--;
+      // The strength of the vortex diminishes over its lifetime
+      this.strength = this.maxStrength * (this.life / this.maxLife);
+    }
+  }
 
   class Particle {
     x: number;
@@ -18,12 +45,11 @@ export default function InteractiveBackground() {
     baseX: number;
     baseY: number;
     color: string;
-    vx: number; // velocity x
-    vy: number; // velocity y
+    vx: number;
+    vy: number;
     
-    // Spring physics properties for the jelly effect
-    private springFactor = 0.001; // Looser spring
-    private dampingFactor = 0.95; // Less aggressive damping for more oscillation
+    private springFactor = 0.02; // How strongly it returns to base
+    private dampingFactor = 0.92; // Friction to stop oscillations
 
     constructor(private ctx: CanvasRenderingContext2D, private canvasWidth: number, private canvasHeight: number) {
       this.x = Math.random() * canvasWidth;
@@ -36,8 +62,35 @@ export default function InteractiveBackground() {
       this.vy = 0;
     }
     
-    update() {
-      // 1. Mouse repulsion
+    update(vortices: Vortex[]) {
+      let inVortex = false;
+
+      // 1. Vortex interaction
+      for (const vortex of vortices) {
+        if (vortex.life <= 0) continue;
+        const dx_vortex = vortex.x - this.x;
+        const dy_vortex = vortex.y - this.y;
+        const distance_vortex = Math.sqrt(dx_vortex * dx_vortex + dy_vortex * dy_vortex);
+
+        if (distance_vortex < vortex.radius) {
+          inVortex = true;
+          const force = (vortex.radius - distance_vortex) / vortex.radius;
+          const angle = Math.atan2(dy_vortex, dx_vortex);
+
+          // Force pulling towards the center
+          const pullX = Math.cos(angle) * vortex.strength * force;
+          const pullY = Math.sin(angle) * vortex.strength * force;
+          
+          // Tangential force for rotation
+          const tangentialX = -Math.sin(angle) * vortex.strength * force * 0.5; // Adjust multiplier for more/less spin
+          const tangentialY = Math.cos(angle) * vortex.strength * force * 0.5;
+
+          this.vx += pullX + tangentialX;
+          this.vy += pullY + tangentialY;
+        }
+      }
+
+      // 2. Mouse repulsion (weaker than vortex)
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
         const dx_mouse = this.x - mouseRef.current.x;
         const dy_mouse = this.y - mouseRef.current.y;
@@ -47,12 +100,13 @@ export default function InteractiveBackground() {
           const forceDirectionX = dx_mouse / distance_mouse;
           const forceDirectionY = dy_mouse / distance_mouse;
           const force = (mouseRef.current.radius - distance_mouse) / mouseRef.current.radius;
-          this.vx += forceDirectionX * force * 0.1; // Softer push
-          this.vy += forceDirectionY * force * 0.1;
+          this.vx += forceDirectionX * force * 0.25; // Softer push
+          this.vy += forceDirectionY * force * 0.25;
         }
       }
 
-      // 2. Spring-back force (Jelly effect)
+      // 3. Spring-back force (Jelly effect)
+      // This force is always active but is overpowered by the vortex
       const dx_base = this.baseX - this.x;
       const dy_base = this.baseY - this.y;
       
@@ -62,11 +116,11 @@ export default function InteractiveBackground() {
       this.vx += springForceX;
       this.vy += springForceY;
       
-      // 3. Apply damping to simulate friction and settle the jelly effect
+      // 4. Apply damping
       this.vx *= this.dampingFactor;
       this.vy *= this.dampingFactor;
       
-      // 4. Update position based on velocity
+      // 5. Update position
       this.x += this.vx;
       this.y += this.vy;
     }
@@ -77,20 +131,6 @@ export default function InteractiveBackground() {
       this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
       this.ctx.closePath();
       this.ctx.fill();
-    }
-
-    explode(clickX: number, clickY: number) {
-      const dx = this.x - clickX;
-      const dy = this.y - clickY;
-      const distance = Math.sqrt(dx*dx + dy*dy) || 1; // Avoid division by zero
-      const maxDistance = 200; // The radius of the explosion effect
-
-      if (distance < maxDistance) {
-        const force = (maxDistance - distance) / maxDistance;
-        // Apply force more smoothly
-        this.vx += (dx / distance) * force * 5; 
-        this.vy += (dy / distance) * force * 5;
-      }
     }
   }
 
@@ -108,7 +148,7 @@ export default function InteractiveBackground() {
     
     const initParticles = () => {
         particlesRef.current = [];
-        let numberOfParticles = 1500; 
+        let numberOfParticles = 1500;
         for (let i = 0; i < numberOfParticles; i++) {
             particlesRef.current.push(new Particle(ctx, canvas.width, canvas.height));
         }
@@ -125,7 +165,7 @@ export default function InteractiveBackground() {
     };
 
     const handleClick = (event: globalThis.MouseEvent) => {
-      particlesRef.current.forEach(p => p.explode(event.x, event.y));
+      vorticesRef.current.push(new Vortex(event.x, event.y));
     };
 
     const handleResize = () => {
@@ -140,8 +180,12 @@ export default function InteractiveBackground() {
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
+      // Update and filter out old vortices
+      vorticesRef.current = vorticesRef.current.filter(v => v.life > 0);
+      vorticesRef.current.forEach(v => v.update());
+
       particlesRef.current.forEach(p => {
-        p.update();
+        p.update(vorticesRef.current);
         p.draw();
       });
       
