@@ -2,35 +2,58 @@
 
 import { useRef, useEffect, useCallback } from 'react';
 
-type Lightning = {
-  from: Particle;
-  to: Particle;
+// Class for the "Vortex" black hole effect on right-click
+class Vortex {
+  x: number;
+  y: number;
+  strength: number;
+  maxStrength: number;
+  radius: number;
   life: number;
-};
+  maxLife: number;
 
-// Class for the "Crystalization Wave" effect on left-click
-class CrystalWave {
-    x: number;
-    y: number;
-    radius: number;
-    maxRadius: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+    this.maxStrength = 2;
+    this.strength = this.maxStrength;
+    this.radius = 250;
+    this.maxLife = 180;
+    this.life = this.maxLife;
+  }
+
+  update() {
+    this.life--;
+    this.strength = this.maxStrength * (this.life / this.maxLife);
+  }
+}
+
+// Class for the "Spacetime Rip" effect on left-click
+class SpacetimeRip {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
     life: number;
-    speed: number;
+    maxLife: number;
+    strength: number;
 
     constructor(x: number, y: number) {
-        this.x = x;
-        this.y = y;
-        this.radius = 0;
-        this.maxRadius = 300; // How far the wave will travel
-        this.life = 1; // It lives as long as it expands
-        this.speed = 4;
+        this.maxLife = 90; // How long the rip stays open
+        this.life = this.maxLife;
+        this.strength = 1.5;
+
+        const angle = Math.random() * Math.PI * 2;
+        const length = Math.random() * 200 + 150; // Random length
+        this.x1 = x - (Math.cos(angle) * length) / 2;
+        this.y1 = y - (Math.sin(angle) * length) / 2;
+        this.x2 = x + (Math.cos(angle) * length) / 2;
+        this.y2 = y + (Math.sin(angle) * length) / 2;
     }
 
     update() {
-        if (this.radius < this.maxRadius) {
-            this.radius += this.speed;
-        } else {
-            this.life = 0; // Wave dies after reaching max radius
+        if (this.life > 0) {
+            this.life--;
         }
     }
 }
@@ -45,34 +68,8 @@ export default function InteractiveBackground() {
     radius: 100,
   });
   const vorticesRef = useRef<Vortex[]>([]);
-  const lightningRef = useRef<Lightning[]>([]);
-  const crystalWavesRef = useRef<CrystalWave[]>([]);
+  const ripsRef = useRef<SpacetimeRip[]>([]);
 
-  // Class for the "Vortex" black hole effect on right-click
-  class Vortex {
-    x: number;
-    y: number;
-    strength: number;
-    maxStrength: number;
-    radius: number;
-    life: number;
-    maxLife: number;
-
-    constructor(x: number, y: number) {
-      this.x = x;
-      this.y = y;
-      this.maxStrength = 2;
-      this.strength = this.maxStrength;
-      this.radius = 250;
-      this.maxLife = 180;
-      this.life = this.maxLife;
-    }
-
-    update() {
-      this.life--;
-      this.strength = this.maxStrength * (this.life / this.maxLife);
-    }
-  }
 
   class Particle {
     x: number;
@@ -83,8 +80,7 @@ export default function InteractiveBackground() {
     color: string;
     vx: number;
     vy: number;
-    isElectrified: number = 0;
-    isCrystallized: number = 0;
+    isRipped: number = 0;
     
     private springFactor = 0.02;
     private dampingFactor = 0.92;
@@ -100,28 +96,36 @@ export default function InteractiveBackground() {
       this.vy = 0;
     }
     
-    update(vortices: Vortex[], crystalWaves: CrystalWave[]) {
-      if (this.isElectrified > 0) this.isElectrified--;
-      if (this.isCrystallized > 0) {
-        this.isCrystallized--;
-        if (this.isCrystallized === 0) { // Shatter effect
-            this.vx += (Math.random() - 0.5) * 2;
-            this.vy += (Math.random() - 0.5) * 2;
-        }
-        return; // Frozen in place
+    update(vortices: Vortex[], rips: SpacetimeRip[]) {
+      if (this.isRipped > 0) {
+        this.isRipped--;
       }
 
-       // 1. Crystal Wave Interaction
-      for (const wave of crystalWaves) {
-        if (wave.life <= 0) continue;
-        const dx_wave = this.x - wave.x;
-        const dy_wave = this.y - wave.y;
-        const distance_wave = Math.sqrt(dx_wave * dx_wave + dy_wave * dy_wave);
+       // 1. Spacetime Rip Interaction
+      for (const rip of rips) {
+          if (rip.life <= 0) continue;
+          
+          const dx = this.x - rip.x1;
+          const dy = this.y - rip.y1;
+          const dxx = rip.x2 - rip.x1;
+          const dyy = rip.y2 - rip.y1;
 
-        // Particle is hit by the wave's edge
-        if (distance_wave < wave.radius && distance_wave > wave.radius - wave.speed) {
-            this.isCrystallized = 60; // Crystallized for 60 frames
-        }
+          const t = ((dx * dxx) + (dy * dyy)) / ((dxx * dxx) + (dyy * dyy));
+          const closestX = t < 0 ? rip.x1 : t > 1 ? rip.x2 : rip.x1 + t * dxx;
+          const closestY = t < 0 ? rip.y1 : t > 1 ? rip.y2 : rip.y1 + t * dyy;
+
+          const dist_dx = closestX - this.x;
+          const dist_dy = closestY - this.y;
+          const distance = Math.sqrt(dist_dx * dist_dx + dist_dy * dist_dy);
+          
+          const effectRadius = 100 * (rip.life / rip.maxLife);
+
+          if (distance < effectRadius) {
+              this.isRipped = rip.life;
+              const force = (effectRadius - distance) / effectRadius;
+              this.vx += (dist_dx / distance) * rip.strength * force;
+              this.vy += (dist_dy / distance) * rip.strength * force;
+          }
       }
       
       // 2. Vortex interaction (right-click)
@@ -182,40 +186,19 @@ export default function InteractiveBackground() {
     
     draw() {
       this.ctx.shadowBlur = 0;
+      
+      if(this.isRipped > 0){
+          const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+          const stretchLength = 1 + speed * 2;
+          const angle = Math.atan2(this.vy, this.vx);
+          
+          this.ctx.strokeStyle = `hsla(195, 100%, 70%, ${this.isRipped / 90})`;
+          this.ctx.lineWidth = this.size > 1.5 ? 1.5 : 1;
+          this.ctx.beginPath();
+          this.ctx.moveTo(this.x - Math.cos(angle) * stretchLength, this.y - Math.sin(angle) * stretchLength);
+          this.ctx.lineTo(this.x + Math.cos(angle) * stretchLength, this.y + Math.sin(angle) * stretchLength);
+          this.ctx.stroke();
 
-      if (this.isCrystallized > 0) {
-        const crystalColor = `hsla(195, 100%, 70%, ${this.isCrystallized / 60})`;
-        this.ctx.fillStyle = crystalColor;
-        this.ctx.strokeStyle = `hsl(195, 100%, 90%)`;
-        this.ctx.shadowColor = crystalColor;
-        this.ctx.shadowBlur = 10;
-        this.ctx.lineWidth = 0.5;
-
-        // Draw a hexagon
-        const radius = this.size * 2;
-        this.ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-            const angle = (Math.PI / 3) * i;
-            const x_i = this.x + radius * Math.cos(angle);
-            const y_i = this.y + radius * Math.sin(angle);
-            if (i === 0) {
-                this.ctx.moveTo(x_i, y_i);
-            } else {
-                this.ctx.lineTo(x_i, y_i);
-            }
-        }
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.stroke();
-
-      } else if (this.isElectrified > 0) {
-        this.ctx.fillStyle = `hsl(180, 100%, 80%)`;
-        this.ctx.shadowBlur = 10;
-        this.ctx.shadowColor = `hsl(180, 100%, 80%)`;
-        this.ctx.beginPath();
-        this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        this.ctx.closePath();
-        this.ctx.fill();
       } else {
         this.ctx.fillStyle = this.color;
         this.ctx.beginPath();
@@ -223,65 +206,8 @@ export default function InteractiveBackground() {
         this.ctx.closePath();
         this.ctx.fill();
       }
-      this.ctx.shadowBlur = 0;
     }
   }
-
-  const findClosestParticle = useCallback((x: number, y: number, ignoreElectrified: boolean) => {
-    let closestParticle: Particle | null = null;
-    let minDistance = Infinity;
-
-    for (const particle of particlesRef.current) {
-      if (ignoreElectrified && particle.isElectrified > 0) continue;
-
-      const dx = particle.x - x;
-      const dy = particle.y - y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestParticle = particle;
-      }
-    }
-    return closestParticle;
-  }, []);
-
-  const triggerChainLightning = useCallback((startX: number, startY: number) => {
-    const MAX_CHAIN_LINKS = 15;
-    const MAX_SEARCH_RADIUS = 200;
-    const EFFECT_DURATION = 30; // Frames
-
-    let currentParticle = findClosestParticle(startX, startY, false);
-    if (!currentParticle) return;
-    
-    currentParticle.isElectrified = EFFECT_DURATION;
-    
-    for (let i = 0; i < MAX_CHAIN_LINKS; i++) {
-        let closestNeighbor: Particle | null = null;
-        let minDistance = MAX_SEARCH_RADIUS;
-
-        for (const otherParticle of particlesRef.current) {
-            if (otherParticle === currentParticle || otherParticle.isElectrified > 0) continue;
-
-            const dx = otherParticle.x - currentParticle.x;
-            const dy = otherParticle.y - currentParticle.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < minDistance) {
-                minDistance = distance;
-                closestNeighbor = otherParticle;
-            }
-        }
-        
-        if (closestNeighbor) {
-            lightningRef.current.push({ from: currentParticle, to: closestNeighbor, life: EFFECT_DURATION });
-            closestNeighbor.isElectrified = EFFECT_DURATION;
-            currentParticle = closestNeighbor;
-        } else {
-            break; // No more neighbors found in range
-        }
-    }
-  }, [findClosestParticle]);
 
 
   useEffect(() => {
@@ -315,7 +241,7 @@ export default function InteractiveBackground() {
     };
 
     const handleLeftClick = (event: globalThis.MouseEvent) => {
-      crystalWavesRef.current.push(new CrystalWave(event.x, event.y));
+      ripsRef.current.push(new SpacetimeRip(event.x, event.y));
     };
 
     const handleRightClick = (event: globalThis.MouseEvent) => {
@@ -335,26 +261,30 @@ export default function InteractiveBackground() {
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      crystalWavesRef.current = crystalWavesRef.current.filter(w => w.life > 0);
-      crystalWavesRef.current.forEach(w => w.update());
+      ripsRef.current = ripsRef.current.filter(r => r.life > 0);
+      ripsRef.current.forEach(r => r.update());
       
       vorticesRef.current = vorticesRef.current.filter(v => v.life > 0);
       vorticesRef.current.forEach(v => v.update());
 
       particlesRef.current.forEach(p => {
-        p.update(vorticesRef.current, crystalWavesRef.current);
+        p.update(vorticesRef.current, ripsRef.current);
         p.draw();
       });
 
-      // Draw lightning
-      lightningRef.current = lightningRef.current.filter(l => l.life > 0);
-      lightningRef.current.forEach(l => {
-          l.life--;
+      // Draw Rips
+      ripsRef.current.forEach(rip => {
+          const lifeRatio = rip.life / rip.maxLife;
+          const gradient = ctx.createLinearGradient(rip.x1, rip.y1, rip.x2, rip.y2);
+          gradient.addColorStop(0, `rgba(0,0,0,0)`);
+          gradient.addColorStop(0.5, `rgba(20, 20, 30, ${lifeRatio * 0.8})`);
+          gradient.addColorStop(1, `rgba(0,0,0,0)`);
+          
+          ctx.strokeStyle = gradient;
+          ctx.lineWidth = Math.sin(lifeRatio * Math.PI) * 20; // Pulsates
           ctx.beginPath();
-          ctx.moveTo(l.from.x, l.from.y);
-          ctx.lineTo(l.to.x, l.to.y);
-          ctx.strokeStyle = `rgba(173, 216, 230, ${l.life / 30 * 0.8})`; // Light blue, fades out
-          ctx.lineWidth = 1.5;
+          ctx.moveTo(rip.x1, rip.y1);
+          ctx.lineTo(rip.x2, rip.y2);
           ctx.stroke();
       });
 
@@ -377,7 +307,7 @@ export default function InteractiveBackground() {
       window.removeEventListener('click', handleLeftClick);
       window.removeEventListener('contextmenu', handleRightClick);
     };
-  }, [triggerChainLightning]);
+  }, []);
 
   return <canvas ref={canvasRef} className="fixed top-0 left-0 -z-10 bg-background" />;
 }
