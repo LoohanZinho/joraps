@@ -2,47 +2,9 @@
 
 import { useRef, useEffect } from 'react';
 
-// Classe para as ondas de choque criadas pelo clique
-class Shockwave {
-  x: number;
-  y: number;
-  radius: number;
-  maxRadius: number;
-  speed: number;
-  life: number;
-
-  constructor(x: number, y: number) {
-    this.x = x;
-    this.y = y;
-    this.radius = 1;
-    this.maxRadius = 150; // O quão longe a onda vai
-    this.speed = 5;      // Velocidade de expansão da onda
-    this.life = 1;       // Força da onda (diminui com o tempo)
-  }
-
-  update() {
-    if (this.life > 0) {
-      this.radius += this.speed;
-      // A força da onda diminui à medida que ela se expande
-      this.life -= 0.025; 
-    }
-  }
-
-  draw(ctx: CanvasRenderingContext2D) {
-    if (this.life > 0) {
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = `hsla(0, 0%, 100%, ${this.life * 0.2})`; // Efeito visual sutil da onda
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-  }
-}
-
 export default function InteractiveBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
-  const shockwavesRef = useRef<Shockwave[]>([]);
   const mouseRef = useRef<{ x: number | null; y: number | null; radius: number }>({
     x: null,
     y: null,
@@ -60,38 +22,25 @@ export default function InteractiveBackground() {
     vx: number; // velocity x
     vy: number; // velocity y
     
-    constructor(private ctx: CanvasRenderingContext2D, private canvasWidth: number, private canvasHeight: number, color: string) {
+    // Spring physics properties for the jelly effect
+    private springFactor = 0.002;
+    private dampingFactor = 0.95; // Simulates friction/air resistance
+    private springBackDamping = 0.92; // Controls how quickly the jelly settles
+
+    constructor(private ctx: CanvasRenderingContext2D, private canvasWidth: number, private canvasHeight: number) {
       this.x = Math.random() * canvasWidth;
       this.y = Math.random() * canvasHeight;
       this.baseX = this.x;
       this.baseY = this.y;
       this.size = Math.random() * 2 + 0.5;
       this.density = (Math.random() * 30) + 1;
-      this.color = color;
+      this.color = `hsl(210, 82%, 54%)`; // Primary color
       this.vx = 0;
       this.vy = 0;
     }
     
     update() {
-      // Movimento de retorno à base (atração)
-      const dx_base = this.baseX - this.x;
-      const dy_base = this.baseY - this.y;
-      const distance_base = Math.sqrt(dx_base * dx_base + dy_base * dy_base);
-      // A força de atração é proporcional à distância, fazendo com que as partículas "deslizem" de volta ao lugar
-      if (distance_base > 1) {
-          const force_base = distance_base * 0.01;
-          this.vx += (dx_base / distance_base) * force_base;
-          this.vy += (dy_base / distance_base) * force_base;
-      }
-
-      // Movimento contínuo de base (drift) para as partículas não ficarem estáticas
-      this.baseY -= 0.1;
-      if (this.baseY < 0 - this.size) {
-        this.baseY = this.canvasHeight + this.size;
-        this.baseX = Math.random() * this.canvasWidth;
-      }
-      
-      // Interação com o mouse (repulsão)
+      // 1. Mouse repulsion
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
         const dx_mouse = this.x - mouseRef.current.x;
         const dy_mouse = this.y - mouseRef.current.y;
@@ -100,50 +49,63 @@ export default function InteractiveBackground() {
         if (distance_mouse < mouseRef.current.radius) {
           const forceDirectionX = dx_mouse / distance_mouse;
           const forceDirectionY = dy_mouse / distance_mouse;
-          // A força é maior quanto mais perto a partícula está do mouse
           const force = (mouseRef.current.radius - distance_mouse) / mouseRef.current.radius;
-          this.vx += forceDirectionX * force * 0.5;
-          this.vy += forceDirectionY * force * 0.5;
+          this.vx += forceDirectionX * force * 0.25;
+          this.vy += forceDirectionY * force * 0.25;
         }
       }
+
+      // 2. Spring-back force (Jelly effect)
+      // This pulls the particle back to its base position
+      const dx_base = this.baseX - this.x;
+      const dy_base = this.baseY - this.y;
       
-      // Interação com as ondas de choque (explosão)
-      shockwavesRef.current.forEach(wave => {
-        if (wave.life > 0) {
-          const dx_wave = this.x - wave.x;
-          const dy_wave = this.y - wave.y;
-          const distance_wave = Math.sqrt(dx_wave * dx_wave + dy_wave * dy_wave);
-          
-          // Verifica se a partícula está dentro do raio da onda de choque
-          if (distance_wave < wave.radius + this.size && distance_wave > 0) {
-            const forceDirectionX = dx_wave / distance_wave;
-            const forceDirectionY = dy_wave / distance_wave;
-            // A força da explosão é maior no início e diminui com a vida da onda
-            const force = (1 - (distance_wave / wave.radius)) * wave.life * 15;
-            this.vx += forceDirectionX * force;
-            this.vy += forceDirectionY * force;
-          }
-        }
-      });
-
-      // Aplicar atrito para parar o movimento eventualmente
-      this.vx *= 0.95;
-      this.vy *= 0.95;
-
-      // Atualizar posição
+      const springForceX = dx_base * this.springFactor;
+      const springForceY = dy_base * this.springFactor;
+      
+      this.vx += springForceX;
+      this.vy += springForceY;
+      
+      // 3. Apply damping to simulate friction and settle the jelly effect
+      this.vx *= this.springBackDamping;
+      this.vy *= this.springBackDamping;
+      
+      // 4. Update position based on velocity
       this.x += this.vx;
       this.y += this.vy;
+      
+      // 5. Continuous background drift
+      this.baseY -= 0.1;
+      if (this.baseY < 0 - this.size) {
+        this.baseY = this.canvasHeight + this.size;
+        this.baseX = Math.random() * this.canvasWidth;
+        this.x = this.baseX;
+        this.y = this.baseY;
+      }
     }
     
     draw() {
-      // A cor da partícula muda com a velocidade (mais rápido = mais branco/brilhante)
+      // The color of the particle changes with velocity (faster = more white/bright)
       const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-      const brightness = Math.min(speed * 15, 70); // Controla o quão brilhante a partícula fica
-      this.ctx.fillStyle = `hsl(210, 82%, ${54 + brightness}%)`; // Começa na cor primária e vai para o branco
+      const brightness = Math.min(speed * 20, 46); // 54 (base) + 46 = 100 (white)
+      this.ctx.fillStyle = `hsl(210, 82%, ${54 + brightness}%)`;
       this.ctx.beginPath();
       this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
       this.ctx.closePath();
       this.ctx.fill();
+    }
+
+    explode(clickX: number, clickY: number) {
+      const dx = this.x - clickX;
+      const dy = this.y - clickY;
+      const distance = Math.sqrt(dx*dx + dy*dy) || 1; // Avoid division by zero
+      const maxDistance = 200; // The radius of the explosion effect
+
+      if (distance < maxDistance) {
+        const force = (maxDistance - distance) / maxDistance;
+        this.vx += (dx / distance) * force * 15;
+        this.vy += (dy / distance) * force * 15;
+      }
     }
   }
 
@@ -154,9 +116,6 @@ export default function InteractiveBackground() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    const computedStyle = getComputedStyle(document.documentElement);
-    const particleColor = `hsl(${computedStyle.getPropertyValue('--primary').trim()})`;
-
     const setCanvasDimensions = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -166,7 +125,7 @@ export default function InteractiveBackground() {
         particlesRef.current = [];
         let numberOfParticles = 1500; 
         for (let i = 0; i < numberOfParticles; i++) {
-            particlesRef.current.push(new Particle(ctx, canvas.width, canvas.height, particleColor));
+            particlesRef.current.push(new Particle(ctx, canvas.width, canvas.height));
         }
     };
 
@@ -181,7 +140,7 @@ export default function InteractiveBackground() {
     };
 
     const handleClick = (event: globalThis.MouseEvent) => {
-      shockwavesRef.current.push(new Shockwave(event.x, event.y));
+      particlesRef.current.forEach(p => p.explode(event.x, event.y));
     };
 
     const handleResize = () => {
@@ -196,17 +155,9 @@ export default function InteractiveBackground() {
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Atualiza e desenha partículas
       particlesRef.current.forEach(p => {
         p.update();
         p.draw();
-      });
-
-      // Atualiza, desenha e remove ondas de choque "mortas"
-      shockwavesRef.current = shockwavesRef.current.filter(wave => {
-        wave.update();
-        // wave.draw(ctx); // Descomente para ver o círculo da onda de choque
-        return wave.life > 0;
       });
       
       animationFrameId = requestAnimationFrame(animate);
