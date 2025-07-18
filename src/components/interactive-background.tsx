@@ -92,8 +92,8 @@ export default function InteractiveBackground() {
     
     const initParticles = () => {
         particlesRef.current = [];
-        // Adjusted for better performance while still feeling full
-        let numberOfParticles = (canvas.width * canvas.height) / 9000; 
+        // Set a fixed number of particles as requested
+        let numberOfParticles = 3000; 
         for (let i = 0; i < numberOfParticles; i++) {
             particlesRef.current.push(new Particle(ctx, canvas.width, canvas.height, particleColor));
         }
