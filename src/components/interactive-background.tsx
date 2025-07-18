@@ -35,14 +35,11 @@ export default function InteractiveBackground() {
     update() {
       // Continuous downward movement for the base position
       this.baseY += this.speed;
-
-      // Reset base position if it goes off screen
       if (this.baseY > this.canvasHeight + this.size) {
-          this.baseY = 0 - this.size;
-          this.baseX = Math.random() * this.canvasWidth;
+        this.baseY = 0 - this.size;
+        this.baseX = Math.random() * this.canvasWidth;
       }
       
-      // Start with the base position
       let targetX = this.baseX;
       let targetY = this.baseY;
 
@@ -67,14 +64,6 @@ export default function InteractiveBackground() {
       // Smoothly move towards the target position
       this.x += (targetX - this.x) / 10;
       this.y += (targetY - this.y) / 10;
-
-      // If particle goes off screen, reset its position to the top
-      if (this.y > this.canvasHeight + this.size) {
-        this.y = 0 - this.size;
-        this.x = Math.random() * this.canvasWidth;
-        this.baseX = this.x;
-        this.baseY = this.y;
-      }
     }
     
     draw() {
@@ -103,7 +92,8 @@ export default function InteractiveBackground() {
     
     const initParticles = () => {
         particlesRef.current = [];
-        let numberOfParticles = (canvas.width * canvas.height) / 4000; // Increased density
+        // Adjusted for better performance while still feeling full
+        let numberOfParticles = (canvas.width * canvas.height) / 9000; 
         for (let i = 0; i < numberOfParticles; i++) {
             particlesRef.current.push(new Particle(ctx, canvas.width, canvas.height, particleColor));
         }
