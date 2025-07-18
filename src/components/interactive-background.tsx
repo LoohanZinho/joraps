@@ -13,7 +13,7 @@ export default function InteractiveBackground() {
   const shockwavesRef = useRef<Shockwave[]>([]);
   const vorticesRef = useRef<Vortex[]>([]);
 
-  // Class for the "jelly" explosion effect
+  // Class for the "Supernova" explosion effect on left-click
   class Shockwave {
     x: number;
     y: number;
@@ -39,7 +39,7 @@ export default function InteractiveBackground() {
     }
   }
 
-  // Class for the "vortex" black hole effect
+  // Class for the "Vortex" black hole effect on right-click
   class Vortex {
     x: number;
     y: number;
@@ -116,7 +116,7 @@ export default function InteractiveBackground() {
         }
       }
 
-      // 2. Shockwave interaction (explosion)
+      // 2. Shockwave interaction (Supernova explosion)
       for (const wave of shockwaves) {
         const dx_wave = this.x - wave.x;
         const dy_wave = this.y - wave.y;
@@ -245,7 +245,7 @@ export default function InteractiveBackground() {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseleave', handleMouseLeave);
     window.addEventListener('click', handleLeftClick);
-       window.addEventListener('contextmenu', handleRightClick);
+    window.addEventListener('contextmenu', handleRightClick);
 
 
     return () => {
@@ -254,7 +254,7 @@ export default function InteractiveBackground() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseleave', handleMouseLeave);
       window.removeEventListener('click', handleLeftClick);
-         window.removeEventListener('contextmenu', handleRightClick);
+      window.removeEventListener('contextmenu', handleRightClick);
     };
   }, []);
 
