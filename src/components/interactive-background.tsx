@@ -53,11 +53,12 @@ export default function InteractiveBackground() {
     x: number;
     y: number;
     size: number;
-    speed: number;
-    color: string;
     baseX: number;
     baseY: number;
     density: number;
+    color: string;
+    vx: number; // velocity x
+    vy: number; // velocity y
     
     constructor(private ctx: CanvasRenderingContext2D, private canvasWidth: number, private canvasHeight: number, color: string) {
       this.x = Math.random() * canvasWidth;
@@ -65,65 +66,74 @@ export default function InteractiveBackground() {
       this.baseX = this.x;
       this.baseY = this.y;
       this.size = Math.random() * 2 + 0.5;
-      this.speed = Math.random() * 0.5 + 0.1;
       this.density = (Math.random() * 30) + 1;
       this.color = color;
+      this.vx = 0;
+      this.vy = 0;
     }
     
     update() {
-      // Movimento contínuo de base
-      this.baseY += this.speed;
+      // Movimento de retorno à base (atração)
+      const dx_base = this.baseX - this.x;
+      const dy_base = this.baseY - this.y;
+      const distance_base = Math.sqrt(dx_base * dx_base + dy_base * dy_base);
+      const force_base = distance_base * 0.02; // Quanto mais longe, mais forte a atração
+      this.vx += (dx_base / distance_base) * force_base;
+      this.vy += (dy_base / distance_base) * force_base;
+
+      // Movimento contínuo de base (drift)
+      this.baseY += 0.1;
       if (this.baseY > this.canvasHeight + this.size) {
         this.baseY = 0 - this.size;
         this.baseX = Math.random() * this.canvasWidth;
       }
       
-      let targetX = this.baseX;
-      let targetY = this.baseY;
-
-      // Interação com o mouse
+      // Interação com o mouse (repulsão)
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
-        const dx = mouseRef.current.x - this.x;
-        const dy = mouseRef.current.y - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        const dx_mouse = this.x - mouseRef.current.x;
+        const dy_mouse = this.y - mouseRef.current.y;
+        const distance_mouse = Math.sqrt(dx_mouse * dx_mouse + dy_mouse * dy_mouse);
         
-        if (distance < mouseRef.current.radius) {
-          const forceDirectionX = dx / distance;
-          const forceDirectionY = dy / distance;
-          const force = (mouseRef.current.radius - distance) / mouseRef.current.radius;
-          const directionX = forceDirectionX * force * this.density;
-          const directionY = forceDirectionY * force * this.density;
-          
-          targetX = this.x - directionX;
-          targetY = this.y - directionY;
+        if (distance_mouse < mouseRef.current.radius) {
+          const forceDirectionX = dx_mouse / distance_mouse;
+          const forceDirectionY = dy_mouse / distance_mouse;
+          const force = (mouseRef.current.radius - distance_mouse) / mouseRef.current.radius;
+          this.vx += forceDirectionX * force * 0.5;
+          this.vy += forceDirectionY * force * 0.5;
         }
       }
       
-      // Interação com as ondas de choque
+      // Interação com as ondas de choque (explosão)
       shockwavesRef.current.forEach(wave => {
         if (wave.life > 0) {
-          const dx = this.x - wave.x;
-          const dy = this.y - wave.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
+          const dx_wave = this.x - wave.x;
+          const dy_wave = this.y - wave.y;
+          const distance_wave = Math.sqrt(dx_wave * dx_wave + dy_wave * dy_wave);
           
-          // Verifica se a partícula está perto o suficiente da onda para ser afetada
-          if (distance < wave.radius && distance > wave.radius - 50) {
-            const forceDirectionX = dx / distance;
-            const forceDirectionY = dy / distance;
-            // A força é maior no início da vida da onda
-            targetX += forceDirectionX * 10 * wave.life;
-            targetY += forceDirectionY * 10 * wave.life;
+          if (distance_wave < wave.radius && distance_wave > 0) {
+            const forceDirectionX = dx_wave / distance_wave;
+            const forceDirectionY = dy_wave / distance_wave;
+            const force = (1 - (distance_wave / wave.radius)) * wave.life * 15; // Força da explosão
+            this.vx += forceDirectionX * force;
+            this.vy += forceDirectionY * force;
           }
         }
       });
 
-      // Move suavemente para a posição alvo
-      this.x += (targetX - this.x) / 10;
-      this.y += (targetY - this.y) / 10;
+      // Aplicar atrito para parar o movimento eventualmente
+      this.vx *= 0.95;
+      this.vy *= 0.95;
+
+      // Atualizar posição
+      this.x += this.vx;
+      this.y += this.vy;
     }
     
     draw() {
-      this.ctx.fillStyle = this.color;
+      // A cor da partícula muda com a velocidade (mais rápido = mais branco)
+      const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+      const brightness = Math.min(speed * 20, 100);
+      this.ctx.fillStyle = `hsl(0, 0%, ${100 - brightness}%)`;
       this.ctx.beginPath();
       this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
       this.ctx.closePath();
@@ -148,7 +158,7 @@ export default function InteractiveBackground() {
     
     const initParticles = () => {
         particlesRef.current = [];
-        let numberOfParticles = 1500; 
+        let numberOfParticles = 1500;
         for (let i = 0; i < numberOfParticles; i++) {
             particlesRef.current.push(new Particle(ctx, canvas.width, canvas.height, particleColor));
         }
