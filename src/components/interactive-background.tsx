@@ -8,6 +8,34 @@ type Lightning = {
   life: number;
 };
 
+// Class for the "Crystalization Wave" effect on left-click
+class CrystalWave {
+    x: number;
+    y: number;
+    radius: number;
+    maxRadius: number;
+    life: number;
+    speed: number;
+
+    constructor(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+        this.radius = 0;
+        this.maxRadius = 300; // How far the wave will travel
+        this.life = 1; // It lives as long as it expands
+        this.speed = 4;
+    }
+
+    update() {
+        if (this.radius < this.maxRadius) {
+            this.radius += this.speed;
+        } else {
+            this.life = 0; // Wave dies after reaching max radius
+        }
+    }
+}
+
+
 export default function InteractiveBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
@@ -18,6 +46,7 @@ export default function InteractiveBackground() {
   });
   const vorticesRef = useRef<Vortex[]>([]);
   const lightningRef = useRef<Lightning[]>([]);
+  const crystalWavesRef = useRef<CrystalWave[]>([]);
 
   // Class for the "Vortex" black hole effect on right-click
   class Vortex {
@@ -54,7 +83,8 @@ export default function InteractiveBackground() {
     color: string;
     vx: number;
     vy: number;
-    isElectrified: number = 0; // Use a number as a timer for the effect
+    isElectrified: number = 0;
+    isCrystallized: number = 0;
     
     private springFactor = 0.02;
     private dampingFactor = 0.92;
@@ -70,12 +100,31 @@ export default function InteractiveBackground() {
       this.vy = 0;
     }
     
-    update(vortices: Vortex[]) {
-      if (this.isElectrified > 0) {
-        this.isElectrified--;
+    update(vortices: Vortex[], crystalWaves: CrystalWave[]) {
+      if (this.isElectrified > 0) this.isElectrified--;
+      if (this.isCrystallized > 0) {
+        this.isCrystallized--;
+        if (this.isCrystallized === 0) { // Shatter effect
+            this.vx += (Math.random() - 0.5) * 2;
+            this.vy += (Math.random() - 0.5) * 2;
+        }
+        return; // Frozen in place
+      }
+
+       // 1. Crystal Wave Interaction
+      for (const wave of crystalWaves) {
+        if (wave.life <= 0) continue;
+        const dx_wave = this.x - wave.x;
+        const dy_wave = this.y - wave.y;
+        const distance_wave = Math.sqrt(dx_wave * dx_wave + dy_wave * dy_wave);
+
+        // Particle is hit by the wave's edge
+        if (distance_wave < wave.radius && distance_wave > wave.radius - wave.speed) {
+            this.isCrystallized = 60; // Crystallized for 60 frames
+        }
       }
       
-      // 1. Vortex interaction (right-click)
+      // 2. Vortex interaction (right-click)
       for (const vortex of vortices) {
         if (vortex.life <= 0) continue;
         const dx_vortex = vortex.x - this.x;
@@ -97,7 +146,7 @@ export default function InteractiveBackground() {
         }
       }
 
-      // 2. Mouse repulsion
+      // 3. Mouse repulsion
       if (mouseRef.current.x !== null && mouseRef.current.y !== null) {
         const dx_mouse = this.x - mouseRef.current.x;
         const dy_mouse = this.y - mouseRef.current.y;
@@ -112,7 +161,7 @@ export default function InteractiveBackground() {
         }
       }
 
-      // 3. Spring-back force (Jelly effect)
+      // 4. Spring-back force (Jelly effect)
       const dx_base = this.baseX - this.x;
       const dy_base = this.baseY - this.y;
       
@@ -122,29 +171,59 @@ export default function InteractiveBackground() {
       this.vx += springForceX;
       this.vy += springForceY;
       
-      // 4. Apply damping (friction)
+      // 5. Apply damping (friction)
       this.vx *= this.dampingFactor;
       this.vy *= this.dampingFactor;
       
-      // 5. Update position
+      // 6. Update position
       this.x += this.vx;
       this.y += this.vy;
     }
     
     draw() {
-      if (this.isElectrified > 0) {
-        this.ctx.fillStyle = `hsl(180, 100%, 80%)`; // Bright cyan for electrified particles
+      this.ctx.shadowBlur = 0;
+
+      if (this.isCrystallized > 0) {
+        const crystalColor = `hsla(195, 100%, 70%, ${this.isCrystallized / 60})`;
+        this.ctx.fillStyle = crystalColor;
+        this.ctx.strokeStyle = `hsl(195, 100%, 90%)`;
+        this.ctx.shadowColor = crystalColor;
+        this.ctx.shadowBlur = 10;
+        this.ctx.lineWidth = 0.5;
+
+        // Draw a hexagon
+        const radius = this.size * 2;
+        this.ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+            const angle = (Math.PI / 3) * i;
+            const x_i = this.x + radius * Math.cos(angle);
+            const y_i = this.y + radius * Math.sin(angle);
+            if (i === 0) {
+                this.ctx.moveTo(x_i, y_i);
+            } else {
+                this.ctx.lineTo(x_i, y_i);
+            }
+        }
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+
+      } else if (this.isElectrified > 0) {
+        this.ctx.fillStyle = `hsl(180, 100%, 80%)`;
         this.ctx.shadowBlur = 10;
         this.ctx.shadowColor = `hsl(180, 100%, 80%)`;
+        this.ctx.beginPath();
+        this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        this.ctx.closePath();
+        this.ctx.fill();
       } else {
         this.ctx.fillStyle = this.color;
-        this.ctx.shadowBlur = 0;
+        this.ctx.beginPath();
+        this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        this.ctx.closePath();
+        this.ctx.fill();
       }
-      this.ctx.beginPath();
-      this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-      this.ctx.closePath();
-      this.ctx.fill();
-      this.ctx.shadowBlur = 0; // Reset shadow for next particle
+      this.ctx.shadowBlur = 0;
     }
   }
 
@@ -236,7 +315,7 @@ export default function InteractiveBackground() {
     };
 
     const handleLeftClick = (event: globalThis.MouseEvent) => {
-      triggerChainLightning(event.x, event.y);
+      crystalWavesRef.current.push(new CrystalWave(event.x, event.y));
     };
 
     const handleRightClick = (event: globalThis.MouseEvent) => {
@@ -256,11 +335,14 @@ export default function InteractiveBackground() {
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
+      crystalWavesRef.current = crystalWavesRef.current.filter(w => w.life > 0);
+      crystalWavesRef.current.forEach(w => w.update());
+      
       vorticesRef.current = vorticesRef.current.filter(v => v.life > 0);
       vorticesRef.current.forEach(v => v.update());
 
       particlesRef.current.forEach(p => {
-        p.update(vorticesRef.current);
+        p.update(vorticesRef.current, crystalWavesRef.current);
         p.draw();
       });
 
