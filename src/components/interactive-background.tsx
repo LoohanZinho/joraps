@@ -17,15 +17,13 @@ export default function InteractiveBackground() {
     size: number;
     baseX: number;
     baseY: number;
-    density: number;
     color: string;
     vx: number; // velocity x
     vy: number; // velocity y
     
     // Spring physics properties for the jelly effect
-    private springFactor = 0.002;
-    private dampingFactor = 0.95; // Simulates friction/air resistance
-    private springBackDamping = 0.92; // Controls how quickly the jelly settles
+    private springFactor = 0.001; // Looser spring
+    private dampingFactor = 0.95; // Less aggressive damping for more oscillation
 
     constructor(private ctx: CanvasRenderingContext2D, private canvasWidth: number, private canvasHeight: number) {
       this.x = Math.random() * canvasWidth;
@@ -33,7 +31,6 @@ export default function InteractiveBackground() {
       this.baseX = this.x;
       this.baseY = this.y;
       this.size = Math.random() * 2 + 0.5;
-      this.density = (Math.random() * 30) + 1;
       this.color = `hsl(210, 82%, 54%)`; // Primary color
       this.vx = 0;
       this.vy = 0;
@@ -50,13 +47,12 @@ export default function InteractiveBackground() {
           const forceDirectionX = dx_mouse / distance_mouse;
           const forceDirectionY = dy_mouse / distance_mouse;
           const force = (mouseRef.current.radius - distance_mouse) / mouseRef.current.radius;
-          this.vx += forceDirectionX * force * 0.25;
-          this.vy += forceDirectionY * force * 0.25;
+          this.vx += forceDirectionX * force * 0.1; // Softer push
+          this.vy += forceDirectionY * force * 0.1;
         }
       }
 
       // 2. Spring-back force (Jelly effect)
-      // This pulls the particle back to its base position
       const dx_base = this.baseX - this.x;
       const dy_base = this.baseY - this.y;
       
@@ -67,28 +63,16 @@ export default function InteractiveBackground() {
       this.vy += springForceY;
       
       // 3. Apply damping to simulate friction and settle the jelly effect
-      this.vx *= this.springBackDamping;
-      this.vy *= this.springBackDamping;
+      this.vx *= this.dampingFactor;
+      this.vy *= this.dampingFactor;
       
       // 4. Update position based on velocity
       this.x += this.vx;
       this.y += this.vy;
-      
-      // 5. Continuous background drift
-      this.baseY -= 0.1;
-      if (this.baseY < 0 - this.size) {
-        this.baseY = this.canvasHeight + this.size;
-        this.baseX = Math.random() * this.canvasWidth;
-        this.x = this.baseX;
-        this.y = this.baseY;
-      }
     }
     
     draw() {
-      // The color of the particle changes with velocity (faster = more white/bright)
-      const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-      const brightness = Math.min(speed * 20, 46); // 54 (base) + 46 = 100 (white)
-      this.ctx.fillStyle = `hsl(210, 82%, ${54 + brightness}%)`;
+      this.ctx.fillStyle = this.color;
       this.ctx.beginPath();
       this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
       this.ctx.closePath();
@@ -103,8 +87,9 @@ export default function InteractiveBackground() {
 
       if (distance < maxDistance) {
         const force = (maxDistance - distance) / maxDistance;
-        this.vx += (dx / distance) * force * 15;
-        this.vy += (dy / distance) * force * 15;
+        // Apply force more smoothly
+        this.vx += (dx / distance) * force * 5; 
+        this.vy += (dy / distance) * force * 5;
       }
     }
   }
