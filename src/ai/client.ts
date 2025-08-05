@@ -30,12 +30,15 @@ const safetySettings = [
   },
 ];
 
-const model = genAI.getGenerativeModel({
-  model: 'gemini-1.5-flash',
+const transcriptionModels = ['gemini-1.5-flash', 'gemini-1.5-pro'];
+const mainModelName = 'gemini-1.5-flash';
+
+const mainModel = genAI.getGenerativeModel({
+  model: mainModelName,
   safetySettings,
 });
 
-// Função de Transcrição
+// Função de Transcrição com Fallback
 export async function transcribeAudio(mimeType: string, audioData: string, noiseSuppression: boolean) {
   const prompt = `
     Seu papel é ser um serviço de transcrição de áudio. Você receberá um áudio e deve retornar APENAS o texto transcrito.
@@ -48,20 +51,41 @@ export async function transcribeAudio(mimeType: string, audioData: string, noise
       mimeType,
     },
   };
-  const result = await model.generateContent([prompt, audioPart]);
-  return { transcription: result.response.text() };
+
+  let lastError: unknown = null;
+
+  for (const modelName of transcriptionModels) {
+    try {
+      console.log(`Tentando transcrever com o modelo: ${modelName}`);
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        safetySettings,
+      });
+      const result = await model.generateContent([prompt, audioPart]);
+      const transcription = result.response.text();
+      console.log(`Transcrição bem-sucedida com o modelo: ${modelName}`);
+      return { transcription };
+    } catch (e) {
+      console.error(`Falha ao transcrever com o modelo ${modelName}:`, e);
+      lastError = e;
+    }
+  }
+
+  console.error("Todos os modelos de transcrição falharam.");
+  throw lastError; // Lança o último erro se todos os modelos falharem
 }
+
 
 // Função de Expansão
 export async function expandText(text: string) {
   const prompt = `Expanda o seguinte texto, adicionando mais detalhes e explicações: ${text}`;
-  const result = await model.generateContent(prompt);
+  const result = await mainModel.generateContent(prompt);
   return { expandedText: result.response.text() };
 }
 
 // Função de Reescrita
 export async function rewriteText(text: string) {
   const prompt = `Reescreva o seguinte texto de uma forma mais concisa e profissional: ${text}`;
-  const result = await model.generateContent(prompt);
+  const result = await mainModel.generateContent(prompt);
   return { rewrittenText: result.response.text() };
 }
