@@ -247,7 +247,6 @@ export default function AudioRecorder() {
       mediaRecorderRef.current.onstop = () => {
         if (isCancelledRef.current) {
             console.log("Transcrição cancelada pelo usuário.");
-            isCancelledRef.current = false;
             return;
         }
         const recordedAudioBlob = new Blob(audioChunksRef.current, { type: supportedMimeType });
@@ -308,26 +307,10 @@ export default function AudioRecorder() {
     }
   }, []);
 
- const cancelProcessing = useCallback(() => {
+  const cancelProcessing = useCallback(() => {
     isCancelledRef.current = true;
-    
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-    }
-    
-    if (mediaStream) {
-      mediaStream.getTracks().forEach(track => track.stop());
-      setMediaStream(null);
-    }
-    
-    setStatus("idle");
-    setTranscript("");
-    setError(null);
-    setRecordingTime(0);
-    audioChunksRef.current = [];
-    mediaRecorderRef.current = null;
-    
-  }, [mediaStream]);
+    window.location.reload();
+  }, []);
 
 
   const handleCopy = () => {
