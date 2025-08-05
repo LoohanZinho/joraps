@@ -216,6 +216,7 @@ export default function AudioRecorder() {
 
   const startRecording = useCallback(async () => {
     try {
+      isCancelledRef.current = false;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setMediaStream(stream);
       setStatus("recording");
@@ -244,15 +245,13 @@ export default function AudioRecorder() {
       };
 
       mediaRecorderRef.current.onstop = () => {
-        const recordedAudioBlob = new Blob(audioChunksRef.current, { type: supportedMimeType });
-        stream.getTracks().forEach(track => track.stop());
-        setMediaStream(null);
-        if (!isCancelledRef.current) {
-            handleTranscription(recordedAudioBlob);
-        } else {
-            isCancelledRef.current = false; // Reset for next recording
-            setStatus("idle");
+        if (isCancelledRef.current) {
+            console.log("Transcrição cancelada pelo usuário.");
+            isCancelledRef.current = false;
+            return;
         }
+        const recordedAudioBlob = new Blob(audioChunksRef.current, { type: supportedMimeType });
+        handleTranscription(recordedAudioBlob);
       };
 
       mediaRecorderRef.current.start();
@@ -288,8 +287,12 @@ export default function AudioRecorder() {
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && (status === "recording" || status === "paused")) {
       mediaRecorderRef.current.stop();
+       if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        setMediaStream(null);
+      }
     }
-  }, [status]);
+  }, [status, mediaStream]);
 
   const pauseRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -307,27 +310,23 @@ export default function AudioRecorder() {
 
  const cancelProcessing = useCallback(() => {
     isCancelledRef.current = true;
-
+    
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      // O onstop será chamado, e o isCancelledRef.current vai previnir a transcrição
       mediaRecorderRef.current.stop();
     }
-
-    // Limpa o stream de mídia se ele existir
+    
     if (mediaStream) {
       mediaStream.getTracks().forEach(track => track.stop());
       setMediaStream(null);
     }
     
-    // Reseta todos os estados para o padrão inicial
     setStatus("idle");
     setTranscript("");
     setError(null);
     setRecordingTime(0);
     audioChunksRef.current = [];
     mediaRecorderRef.current = null;
-    isCancelledRef.current = false; // Reseta o cancelamento para a proxima gravação
-
+    
   }, [mediaStream]);
 
 
