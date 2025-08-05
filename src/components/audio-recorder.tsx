@@ -305,17 +305,31 @@ export default function AudioRecorder() {
     }
   }, []);
 
-  const cancelProcessing = useCallback(() => {
+ const cancelProcessing = useCallback(() => {
     isCancelledRef.current = true;
-    if (mediaRecorderRef.current && (status === "recording" || status === "paused" || status === "processing")) {
-      if (mediaRecorderRef.current.state !== "inactive") {
-          mediaRecorderRef.current.stop();
-      }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      // O onstop será chamado, e o isCancelledRef.current vai previnir a transcrição
+      mediaRecorderRef.current.stop();
     }
+
+    // Limpa o stream de mídia se ele existir
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      setMediaStream(null);
+    }
+    
+    // Reseta todos os estados para o padrão inicial
     setStatus("idle");
     setTranscript("");
     setError(null);
-  }, [status]);
+    setRecordingTime(0);
+    audioChunksRef.current = [];
+    mediaRecorderRef.current = null;
+    isCancelledRef.current = false; // Reseta o cancelamento para a proxima gravação
+
+  }, [mediaStream]);
+
 
   const handleCopy = () => {
     if(!transcript) return;
