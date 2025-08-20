@@ -1,3 +1,4 @@
+
 // src/ai/client.ts
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 
@@ -93,13 +94,22 @@ export async function rewriteText(text: string) {
 // Função para extrair texto de um PDF
 export async function extractTextFromPDF(file: File) {
     // Importação dinâmica para garantir que seja executado apenas no cliente
-    const pdf = (await import('pdf-parse/lib/pdf-parse.js')).default;
     const pdfjs = await import('pdfjs-dist/build/pdf');
-    pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
+    const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
     const arrayBuffer = await file.arrayBuffer();
-    const data = await pdf(Buffer.from(arrayBuffer));
-    return { extractedText: data.text };
+    const pdf = await pdfjs.getDocument({data: arrayBuffer}).promise;
+    const numPages = pdf.numPages;
+    let fullText = '';
+
+    for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        fullText += textContent.items.map(item => item.str).join(' ') + '\n';
+    }
+
+    return { extractedText: fullText };
 }
 
 
