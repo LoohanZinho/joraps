@@ -317,11 +317,23 @@ export default function AudioRecorder() {
 
   const cancelProcessing = useCallback(() => {
     isCancelledRef.current = true;
-    if (mediaRecorderRef.current) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-    window.location.reload();
-  }, []);
+    // Reinicializa o estado para permitir uma nova gravação ou upload
+    setStatus('idle');
+    setTranscript('');
+    setError(null);
+    setRecordingTime(0);
+    audioChunksRef.current = [];
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        setMediaStream(null);
+    }
+    clearUploadedFile();
+    // A linha abaixo causava o comportamento indesejado. A melhor abordagem é resetar o estado.
+    // window.location.reload(); 
+  }, [mediaStream]);
 
 
   const handleCopy = () => {
@@ -372,9 +384,9 @@ export default function AudioRecorder() {
   };
 
   const loadFile = (file: File) => {
-    const validTypes = ["audio/mpeg", "audio/mp4", "video/mp4", "audio/mp3"];
+    const validTypes = ["audio/mpeg", "audio/mp4", "video/mp4", "audio/mp3", "audio/webm", "video/webm"];
     if (!validTypes.includes(file.type)) {
-      setError(`Formato de arquivo não suportado: ${file.type}. Por favor, use MP3 ou MP4.`);
+      setError(`Formato de arquivo não suportado: ${file.type}. Por favor, use MP3, MP4 ou WEBM.`);
       setStatus("error");
       return;
     }
@@ -420,7 +432,6 @@ export default function AudioRecorder() {
   };
   
   const isAiProcessing = expansionStatus === "processing" || rewriteStatus === "processing";
-  const canInteract = status === 'idle' || status === 'file-loaded';
 
   return (
     <Card 
@@ -459,7 +470,7 @@ export default function AudioRecorder() {
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="audio/mpeg,audio/mp3,video/mp4"
+            accept="audio/mpeg,audio/mp3,video/mp4,audio/mp4,audio/webm,video/webm"
             className="hidden"
           />
           {status === 'recording' || status === 'paused' ? (
@@ -585,7 +596,7 @@ export default function AudioRecorder() {
                   status === 'recording' ? 'Gravação em andamento...' : 
                   status === 'paused' ? 'Gravação pausada...' :
                   status === 'processing' ? 'Sua transcrição aparecerá aqui em breve...' :
-                  status === 'file-loaded' ? `Pronto para transcrever "${uploadedFile?.name}". Clique em "Transcrever Arquivo".` :
+                  status === 'file-loaded' && uploadedFile ? `Pronto para transcrever "${uploadedFile?.name}". Clique em "Transcrever Arquivo".` :
                   'Sua transcrição aparecerá aqui...'
                 }
                 value={transcript}
@@ -691,5 +702,3 @@ export default function AudioRecorder() {
     </Card>
   );
 }
-
-    
