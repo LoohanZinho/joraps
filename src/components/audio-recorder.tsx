@@ -242,13 +242,6 @@ export default function AudioRecorder() {
   const isCancelledRef = useRef(false);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   
-  // Configura o worker do PDF.js
-  useEffect(() => {
-    const pdfjs = (window as any).pdfjsLib;
-    if (pdfjs) {
-      pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
-    }
-  }, []);
 
   useEffect(() => {
     try {

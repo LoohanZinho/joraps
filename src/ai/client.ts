@@ -93,6 +93,11 @@ export async function rewriteText(text: string) {
 
 // Função para extrair texto de um PDF
 export async function extractTextFromPDF(file: File) {
+    // pdf-parse usa pdf.js por baixo dos panos. É preciso configurar o worker.
+    // Esta é a forma de fazer isso no lado do cliente com Next.js
+    const pdfjs = await import('pdfjs-dist/build/pdf');
+    pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
+
     const arrayBuffer = await file.arrayBuffer();
     const data = await pdf(Buffer.from(arrayBuffer));
     return { extractedText: data.text };
