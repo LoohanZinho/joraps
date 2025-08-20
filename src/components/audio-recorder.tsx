@@ -591,7 +591,8 @@ export default function AudioRecorder() {
     e.preventDefault();
     if (!chatInput.trim() || !transcript) return;
 
-    const newMessages: ChatMessage[] = [...chatMessages, { sender: 'user', text: chatInput }];
+    const userMessage: ChatMessage = { sender: 'user', text: chatInput };
+    const newMessages: ChatMessage[] = [...chatMessages, userMessage];
     setChatMessages(newMessages);
     const question = chatInput;
     setChatInput("");
@@ -599,7 +600,8 @@ export default function AudioRecorder() {
     setError(null);
 
     try {
-      const result = await chatAboutContent(transcript, question);
+      // Pass the current history (without the new bot message)
+      const result = await chatAboutContent(transcript, chatMessages, question);
       setChatMessages([...newMessages, { sender: 'bot', text: result.answer }]);
     } catch (e: unknown) {
       const errorMessage = getErrorMessage(e);

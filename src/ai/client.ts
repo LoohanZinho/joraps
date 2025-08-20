@@ -91,19 +91,25 @@ export async function rewriteText(text: string) {
 }
 
 // Função de Chat sobre o conteúdo
-export async function chatAboutContent(transcript: string, question: string) {
-    const prompt = `
-    Você é um assistente de IA. Sua única função é responder a perguntas com base no conteúdo de uma transcrição fornecida.
-    NÃO use nenhum conhecimento externo. Baseie sua resposta estritamente no texto a seguir. Se a resposta não estiver no texto, diga "A informação não está disponível na transcrição."
+export async function chatAboutContent(transcript: string, history: Array<{ sender: 'user' | 'bot'; text: string }>, question: string) {
+    const formattedHistory = history.map(msg => `${msg.sender === 'user' ? 'Usuário' : 'Assistente'}: ${msg.text}`).join('\n');
 
-    Transcrição:
+    const prompt = `
+    Você é um assistente de IA amigável e prestativo. Sua principal função é responder a perguntas com base no conteúdo de uma transcrição fornecida.
+    Você deve ter uma conversa natural e fluida. Use o histórico da conversa para entender o contexto.
+    Baseie suas respostas estritamente no texto da transcrição. Se a informação não estiver explicitamente no texto, você pode tentar inferir ou educadamente dizer que não consegue encontrar a resposta, mas evite ser robótico.
+
+    **Transcrição Completa:**
     """
     ${transcript}
     """
 
-    Pergunta do usuário: "${question}"
+    **Histórico da Conversa:**
+    ${formattedHistory}
 
-    Sua resposta:
+    **Nova Pergunta do Usuário:** "${question}"
+
+    **Sua Resposta (como Assistente):**
   `;
   const result = await mainModel.generateContent(prompt);
   return { answer: result.response.text() };
