@@ -97,7 +97,6 @@ export async function extractTextFromPDF(file: File): Promise<{ extractedText: s
   const pdfjs = await import('pdfjs-dist/build/pdf');
   const pdfjsWorker = (await import('pdfjs-dist/build/pdf.worker.entry.js')).default;
   
-  // @ts-ignore
   pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
   const arrayBuffer = await file.arrayBuffer();
