@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback, MouseEvent, useEffect } from "react";
-import { Mic, StopCircle, Copy, Check, Loader2, AlertCircle, Wand2, Pause, Play, Timer, Trash2, FilePenLine } from "lucide-react";
+import { useState, useRef, useCallback, MouseEvent, useEffect, DragEvent } from "react";
+import { Mic, StopCircle, Copy, Check, Loader2, AlertCircle, Wand2, Pause, Play, Timer, Trash2, FilePenLine, UploadCloud, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import AudioVisualizer from "./audio-visualizer";
 import { transcribeAudio, expandText, rewriteText } from "@/ai/client";
 
-type Status = "idle" | "recording" | "paused" | "processing" | "ready" | "error";
+type Status = "idle" | "recording" | "paused" | "processing" | "ready" | "error" | "file-loaded";
 type AiActionStatus = "idle" | "processing" | "error";
 
 interface TranscriptionHistoryItem {
@@ -36,11 +36,15 @@ export default function AudioRecorder() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [transcriptionHistory, setTranscriptionHistory] = useState<TranscriptionHistoryItem[]>([]);
   const [copiedHistory, setCopiedHistory] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const cardRef = useRef<HTMLDivElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isCancelledRef = useRef(false);
 
   useEffect(() => {
@@ -86,7 +90,7 @@ export default function AudioRecorder() {
     setError(null);
 
     if (blob.size < 1000) {
-        setError("Nenhum áudio foi gravado. A gravação pode estar vazia ou muito curta.");
+        setError("Nenhum áudio foi gravado ou o arquivo está vazio. A gravação pode estar vazia ou muito curta.");
         setStatus("error");
         return;
     }
@@ -123,6 +127,8 @@ export default function AudioRecorder() {
         console.error("Transcription failed:", e);
         setError(getErrorMessage(e));
         setStatus("error");
+    } finally {
+      clearUploadedFile();
     }
   }, [isNoiseSuppressionEnabled]);
 
@@ -215,6 +221,7 @@ export default function AudioRecorder() {
 
 
   const startRecording = useCallback(async () => {
+    if(status !== 'idle') return;
     try {
       isCancelledRef.current = false;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -281,10 +288,11 @@ export default function AudioRecorder() {
       setError(errorMessage);
       setStatus("error");
     }
-  }, [handleTranscription]);
+  }, [handleTranscription, status]);
   
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && (status === "recording" || status === "paused")) {
+      isCancelledRef.current = false;
       mediaRecorderRef.current.stop();
        if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
@@ -309,6 +317,9 @@ export default function AudioRecorder() {
 
   const cancelProcessing = useCallback(() => {
     isCancelledRef.current = true;
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+    }
     window.location.reload();
   }, []);
 
@@ -335,15 +346,81 @@ export default function AudioRecorder() {
       console.error("Failed to save to localStorage", e);
     }
   };
-
-
+  
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60).toString().padStart(2, '0');
     const seconds = (time % 60).toString().padStart(2, '0');
     return `${minutes}:${seconds}`;
   };
+
+  // Funções de Drag and Drop e Upload
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      loadFile(file);
+    }
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOver(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      loadFile(file);
+    }
+  };
+
+  const loadFile = (file: File) => {
+    const validTypes = ["audio/mpeg", "audio/mp4", "video/mp4", "audio/mp3"];
+    if (!validTypes.includes(file.type)) {
+      setError(`Formato de arquivo não suportado: ${file.type}. Por favor, use MP3 ou MP4.`);
+      setStatus("error");
+      return;
+    }
+    setUploadedFile(file);
+    setUploadedFileUrl(URL.createObjectURL(file));
+    setStatus("file-loaded");
+    setError(null);
+    setTranscript("");
+  };
+
+  const clearUploadedFile = () => {
+    if (uploadedFileUrl) {
+      URL.revokeObjectURL(uploadedFileUrl);
+    }
+    setUploadedFile(null);
+    setUploadedFileUrl(null);
+    if(status === 'file-loaded' || status === 'ready' || status === 'error') {
+      setStatus("idle");
+    }
+    if(fileInputRef.current) {
+        fileInputRef.current.value = "";
+    }
+  };
+
+  const handleTranscribeFile = () => {
+    if(uploadedFile) {
+        handleTranscription(uploadedFile);
+    }
+  }
+
+  const handleDragEvents = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.type === "dragenter" || event.type === "dragover") {
+      setDragOver(true);
+    } else if (event.type === "dragleave") {
+      setDragOver(false);
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
   
   const isAiProcessing = expansionStatus === "processing" || rewriteStatus === "processing";
+  const canInteract = status === 'idle' || status === 'file-loaded';
 
   return (
     <Card 
@@ -356,8 +433,8 @@ export default function AudioRecorder() {
       }}
       className="w-full shadow-2xl shadow-primary/10 border-primary/20 rounded-2xl will-change-transform">
       <CardHeader className="text-center">
-        <CardTitle>Sua Ferramenta de Transcrição</CardTitle>
-        <CardDescription>Clique em gravar, fale e deixe a IA fazer o resto.</CardDescription>
+        <CardTitle>Sua Ferramenta de Mídia Inteligente</CardTitle>
+        <CardDescription>Grave áudios ou carregue arquivos MP3/MP4 para transcrever.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {(status === 'error' || expansionStatus === 'error' || rewriteStatus === 'error') && error && (
@@ -367,7 +444,24 @@ export default function AudioRecorder() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        <div className="flex flex-col justify-center items-center py-4 min-h-[160px] gap-4">
+        <div 
+            className={cn(
+              "flex flex-col justify-center items-center py-4 min-h-[180px] gap-4 border-2 border-dashed rounded-lg transition-colors duration-200",
+              {"border-primary bg-primary/10": dragOver},
+              {"border-border": !dragOver}
+            )}
+            onDrop={handleDrop}
+            onDragEnter={handleDragEvents}
+            onDragLeave={handleDragEvents}
+            onDragOver={handleDragEvents}
+        >
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="audio/mpeg,audio/mp3,video/mp4"
+            className="hidden"
+          />
           {status === 'recording' || status === 'paused' ? (
             <>
               {mediaStream && <AudioVisualizer mediaStream={mediaStream} isSuppressed={isNoiseSuppressionEnabled} />}
@@ -399,7 +493,7 @@ export default function AudioRecorder() {
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <Loader2 className="h-40 w-40 animate-spin text-destructive/50" />
                   </div>
-                  <Button
+                   <Button
                     onClick={cancelProcessing}
                     variant="destructive"
                     className={cn(
@@ -416,21 +510,46 @@ export default function AudioRecorder() {
                 </div>
                 <p className="text-sm font-medium text-destructive mt-2">Processando...</p>
               </div>
+          ) : status === 'file-loaded' && uploadedFile && uploadedFileUrl ? (
+            <div className="flex flex-col items-center gap-3 w-full">
+              <div className="relative w-full max-w-sm p-2 bg-secondary rounded-md">
+                {uploadedFile.type.startsWith('video') ? (
+                    <video src={uploadedFileUrl} controls className="w-full rounded" />
+                ) : (
+                    <audio src={uploadedFileUrl} controls className="w-full" />
+                )}
+                <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80" onClick={clearUploadedFile}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFile.name}</p>
+              <Button onClick={handleTranscribeFile} size="lg" className="bg-accent hover:bg-accent/90">
+                Transcrever Arquivo
+              </Button>
+            </div>
           ) : (
-            <Button
-              onClick={startRecording}
-              disabled={isAiProcessing}
-              className={cn(
-                "h-32 w-32 rounded-full",
-                "flex flex-col items-center justify-center gap-2",
-                "transition-all duration-300 ease-in-out transform hover:scale-105",
-                "text-lg font-bold shadow-lg"
-              )}
-              aria-label="Gravar"
-            >
-              <Mic className="h-8 w-8" />
-              <span>Gravar</span>
-            </Button>
+             <div className="flex flex-col items-center gap-4 text-center">
+                <Button
+                  onClick={startRecording}
+                  disabled={isAiProcessing}
+                  className={cn(
+                    "h-24 w-24 rounded-full",
+                    "flex flex-col items-center justify-center gap-2",
+                    "transition-all duration-300 ease-in-out transform hover:scale-105",
+                    "text-md font-bold shadow-lg"
+                  )}
+                  aria-label="Gravar"
+                >
+                  <Mic className="h-8 w-8" />
+                  <span>Gravar</span>
+                </Button>
+                <div className="text-muted-foreground text-sm">ou</div>
+                <Button variant="outline" onClick={triggerFileInput}>
+                    <UploadCloud className="mr-2 h-4 w-4" />
+                    Selecione um arquivo (MP3, MP4)
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2">Você também pode arrastar e soltar um arquivo aqui.</p>
+             </div>
           )}
         </div>
         <div className="space-y-2">
@@ -466,11 +585,12 @@ export default function AudioRecorder() {
                   status === 'recording' ? 'Gravação em andamento...' : 
                   status === 'paused' ? 'Gravação pausada...' :
                   status === 'processing' ? 'Sua transcrição aparecerá aqui em breve...' :
+                  status === 'file-loaded' ? `Pronto para transcrever "${uploadedFile?.name}". Clique em "Transcrever Arquivo".` :
                   'Sua transcrição aparecerá aqui...'
                 }
                 value={transcript}
                 onChange={(e) => setTranscript(e.target.value)}
-                disabled={isAiProcessing || status === 'processing' || status === 'recording' || status === 'paused' }
+                disabled={isAiProcessing || status !== 'ready'}
                 rows={10}
                 className="resize-none bg-secondary/50 rounded-lg text-base select-text"
               />
@@ -561,7 +681,7 @@ export default function AudioRecorder() {
          <Button 
             onClick={handleCopy} 
             variant="default" 
-            className="bg-accent hover:bg-accent/90"
+            className="bg-primary hover:bg-primary/90"
             disabled={!transcript || isAiProcessing}
           >
             {isCopied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
@@ -571,3 +691,5 @@ export default function AudioRecorder() {
     </Card>
   );
 }
+
+    

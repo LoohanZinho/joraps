@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <BalancerProvider>
       <main className="relative flex min-h-screen w-full flex-col items-center justify-center bg-transparent p-4 sm:p-8">
-        <div className="w-full max-w-2xl" style={{ perspective: "1000px" }}>
+        <div className="w-full max-w-3xl" style={{ perspective: "1000px" }}>
           <DynamicHeader />
           <AudioRecorder />
           <footer className="mt-8 text-center text-sm text-muted-foreground">
@@ -17,3 +17,5 @@ export default function Home() {
     </BalancerProvider>
   );
 }
+
+    
