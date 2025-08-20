@@ -674,7 +674,7 @@ export default function AudioRecorder() {
                             }}
                         />
                     ) : uploadedFileType === 'pdf' ? (
-                        <div className="w-full h-48 bg-black rounded-lg flex flex-col items-center justify-center text-white">
+                        <div className="w-full h-48 bg-secondary text-secondary-foreground rounded-lg flex flex-col items-center justify-center">
                            <FileIcon className="w-16 h-16 mb-4"/>
                            <p className="font-mono">{uploadedFile?.name}</p>
                         </div>
