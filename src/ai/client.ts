@@ -95,8 +95,9 @@ export async function rewriteText(text: string) {
 export async function extractTextFromPDF(file: File): Promise<{ extractedText: string }> {
   // Dynamic import for client-side execution
   const pdfjs = await import('pdfjs-dist/build/pdf');
-  const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
+  const pdfjsWorker = (await import('pdfjs-dist/build/pdf.worker.entry.js')).default;
   
+  // @ts-ignore
   pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
   const arrayBuffer = await file.arrayBuffer();
