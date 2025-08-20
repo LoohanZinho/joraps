@@ -92,24 +92,26 @@ export async function rewriteText(text: string) {
 }
 
 // Função para extrair texto de um PDF
-export async function extractTextFromPDF(file: File) {
-    // Importação dinâmica para garantir que seja executado apenas no cliente
-    const pdfjs = await import('pdfjs-dist/build/pdf');
-    const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
-    pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+export async function extractTextFromPDF(file: File): Promise<{ extractedText: string }> {
+  // Dynamic import for client-side execution
+  const pdfjs = await import('pdfjs-dist/build/pdf');
+  const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
+  
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({data: arrayBuffer}).promise;
-    const numPages = pdf.numPages;
-    let fullText = '';
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+  const pdf = await loadingTask.promise;
+  let fullText = '';
 
-    for (let i = 1; i <= numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        fullText += textContent.items.map(item => (item as any).str).join(' ') + '\n';
-    }
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map(item => (item as any).str).join(' ');
+    fullText += pageText + '\n';
+  }
 
-    return { extractedText: fullText };
+  return { extractedText: fullText };
 }
 
 
