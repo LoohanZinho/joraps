@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter, Poppins } from 'next/font/google';
 import { Toaster } from '@/components/ui/toaster';
-import InteractiveBackground from '@/components/interactive-background';
 import './globals.css';
 
 const inter = Inter({
@@ -29,8 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${poppins.variable}`}>
-      <body className="font-body antialiased select-none">
-        <InteractiveBackground />
+      <body className="font-body antialiased select-none bg-secondary/30">
         {children}
         <Toaster />
       </body>

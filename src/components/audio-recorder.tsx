@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, MouseEvent, useEffect, DragEvent } from "react";
 import { Mic, StopCircle, Copy, Check, Loader2, AlertCircle, Wand2, Pause, Play, Timer, Trash2, FilePenLine, UploadCloud, X, Send, Bot, User, Volume2, Volume1, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -175,8 +175,6 @@ export default function AudioRecorder() {
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
-  const [rotate, setRotate] = useState({ x: 0, y: 0 });
-  const [is3dEffectEnabled, setIs3dEffectEnabled] = useState(true);
   const [isNoiseSuppressionEnabled, setIsNoiseSuppressionEnabled] = useState(true);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -190,7 +188,6 @@ export default function AudioRecorder() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const cardRef = useRef<HTMLDivElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isCancelledRef = useRef(false);
@@ -201,10 +198,6 @@ export default function AudioRecorder() {
       const storedHistory = localStorage.getItem("transcriptionHistory");
       if (storedHistory) {
         setTranscriptionHistory(JSON.parse(storedHistory));
-      }
-      const stored3dEffect = localStorage.getItem("is3dEffectEnabled");
-      if (stored3dEffect !== null) {
-        setIs3dEffectEnabled(JSON.parse(stored3dEffect));
       }
       const storedNoiseSuppression = localStorage.getItem("isNoiseSuppressionEnabled");
       if (storedNoiseSuppression !== null) {
@@ -268,7 +261,7 @@ export default function AudioRecorder() {
               }
               return newHistory;
             });
-            setStatus("ready");
+            setStatus(uploadedFile ? "file-loaded" : "ready");
         } else {
              setError("Não foi possível transcrever o áudio. A resposta da IA estava vazia.");
              setStatus("error");
@@ -278,33 +271,7 @@ export default function AudioRecorder() {
         setError(getErrorMessage(e));
         setStatus("error");
     }
-  }, [isNoiseSuppressionEnabled, chatMessages]);
-
-
-  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (!cardRef.current || !is3dEffectEnabled) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const rotateY = 5 * ((mouseX - width / 2) / (width / 2));
-    const rotateX = -5 * ((mouseY - height / 2) / (height / 2));
-    setRotate({ x: rotateX, y: rotateY });
-  };
-
-  const handleMouseLeave = () => {
-    if (!is3dEffectEnabled) return;
-    setRotate({ x: 0, y: 0 });
-  };
-  
-  const handleToggle3dEffect = (checked: boolean) => {
-    setIs3dEffectEnabled(checked);
-    localStorage.setItem("is3dEffectEnabled", JSON.stringify(checked));
-    if (!checked) {
-      setRotate({ x: 0, y: 0 });
-    }
-  };
+  }, [isNoiseSuppressionEnabled, chatMessages, uploadedFile]);
 
   const handleToggleNoiseSuppression = (checked: boolean) => {
     setIsNoiseSuppressionEnabled(checked);
@@ -359,7 +326,8 @@ export default function AudioRecorder() {
     try {
       const result = await rewriteText(transcript);
       setTranscript(result.rewrittenText);
-    } catch (e: unknown) {
+    } catch (e: unknown)
+      {
       console.error(e);
       setError(getErrorMessage(e));
     } finally {
@@ -601,21 +569,8 @@ export default function AudioRecorder() {
   const showPlayer = !!uploadedFileUrl;
   
   return (
-    <Card 
-      ref={cardRef}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      style={{
-        transform: `rotateX(${rotate.x}deg) rotateY(${rotate.y}deg)`,
-        transition: 'transform 0.1s ease-out',
-      }}
-      className="w-full shadow-2xl shadow-primary/10 border-primary/20 rounded-2xl will-change-transform">
-      <CardHeader className="text-center">
-        <CardTitle>Sua Ferramenta de Mídia Inteligente</CardTitle>
-        <CardDescription>Grave áudios, carregue arquivos MP3/MP4 para transcrever e converse com a IA sobre o conteúdo.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {(status === 'error' || expansionStatus === 'error' || rewriteStatus === 'error' || chatStatus === 'error') && error && (
+    <div className="w-full bg-card rounded-xl border-primary/20 border shadow-sm p-6 space-y-6">
+       {(status === 'error' || expansionStatus === 'error' || rewriteStatus === 'error' || chatStatus === 'error') && error && (
            <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Erro</AlertTitle>
@@ -623,261 +578,268 @@ export default function AudioRecorder() {
           </Alert>
         )}
 
-        {showPlayer ? (
-            <div className="flex flex-col items-center gap-3 w-full">
-                <div className="relative w-full">
-                    <CustomMediaPlayer 
-                        file={uploadedFile}
-                        url={uploadedFileUrl} 
-                        type={uploadedFile?.type.startsWith('video') ? 'video' : 'audio'}
-                        onEnded={() => {
-                            // Opcional: fazer algo quando a mídia terminar
-                        }}
-                    />
-                    <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80 z-10" onClick={clearUploadedFile}>
-                        <X className="h-4 w-4" />
-                    </Button>
-                </div>
-                 <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFile?.name}</p>
-            </div>
-        ) : (
-            <div 
-                className={cn(
-                  "flex flex-col justify-center items-center py-4 min-h-[180px] gap-4 border-2 border-dashed rounded-lg transition-colors duration-200",
-                  {"border-primary bg-primary/10": dragOver},
-                  {"border-border": !dragOver},
-                )}
-                onDrop={handleDrop}
-                onDragEnter={handleDragEvents}
-                onDragLeave={handleDragEvents}
-                onDragOver={handleDragEvents}
-            >
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept="audio/mpeg,audio/mp3,video/mp4,audio/mp4,audio/webm,video/webm"
-                className="hidden"
-              />
-              {status === 'recording' || status === 'paused' ? (
-                <>
-                  {mediaStream && <AudioVisualizer mediaStream={mediaStream} isSuppressed={isNoiseSuppressionEnabled} />}
-                  <div className="flex w-full items-center justify-center gap-4">
-                     <div className="flex items-center gap-2 text-muted-foreground font-mono text-lg">
-                        <Timer className="h-5 w-5"/>
-                        <span>{formatTime(recordingTime)}</span>
-                    </div>
-                    {status === 'recording' ? (
-                      <Button onClick={pauseRecording} variant="outline" size="lg">
-                        <Pause className="mr-2 h-5 w-5" />
-                        Pausar
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Coluna da Esquerda: Player ou Gravação */}
+        <div className="flex flex-col items-center justify-center bg-secondary/50 rounded-lg p-4 min-h-[300px]">
+          {showPlayer ? (
+              <div className="flex flex-col items-center gap-3 w-full">
+                  <div className="relative w-full">
+                      <CustomMediaPlayer 
+                          file={uploadedFile}
+                          url={uploadedFileUrl} 
+                          type={uploadedFile?.type.startsWith('video') ? 'video' : 'audio'}
+                          onEnded={() => {
+                              // Opcional: fazer algo quando a mídia terminar
+                          }}
+                      />
+                      <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80 z-10" onClick={clearUploadedFile}>
+                          <X className="h-4 w-4" />
                       </Button>
-                    ) : (
-                      <Button onClick={resumeRecording} variant="outline" size="lg">
-                        <Play className="mr-2 h-5 w-5" />
-                        Retomar
-                      </Button>
-                    )}
-                    <Button onClick={stopRecording} variant="destructive" size="lg" className="shadow-md transition-transform hover:scale-105">
-                      <StopCircle className="mr-2 h-5 w-5" />
-                      Parar
-                    </Button>
                   </div>
-                </>
-              ) : status === 'processing' ? (
-                 <div className="flex flex-col items-center gap-4">
-                    <div className="relative flex h-32 w-32 items-center justify-center">
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <Loader2 className="h-40 w-40 animate-spin text-destructive/50" />
+                  <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFile?.name}</p>
+              </div>
+          ) : (
+              <div 
+                  className={cn(
+                    "flex flex-col justify-center items-center py-4 w-full h-full min-h-[180px] gap-4 border-2 border-dashed rounded-lg transition-colors duration-200",
+                    {"border-primary bg-primary/10": dragOver},
+                    {"border-border": !dragOver},
+                  )}
+                  onDrop={handleDrop}
+                  onDragEnter={handleDragEvents}
+                  onDragLeave={handleDragEvents}
+                  onDragOver={handleDragEvents}
+              >
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept="audio/mpeg,audio/mp3,video/mp4,audio/mp4,audio/webm,video/webm"
+                  className="hidden"
+                />
+                {status === 'recording' || status === 'paused' ? (
+                  <>
+                    {mediaStream && <AudioVisualizer mediaStream={mediaStream} isSuppressed={isNoiseSuppressionEnabled} />}
+                    <div className="flex w-full items-center justify-center gap-4">
+                       <div className="flex items-center gap-2 text-muted-foreground font-mono text-lg">
+                          <Timer className="h-5 w-5"/>
+                          <span>{formatTime(recordingTime)}</span>
                       </div>
-                       <Button
-                        onClick={cancelProcessing}
-                        variant="destructive"
+                      {status === 'recording' ? (
+                        <Button onClick={pauseRecording} variant="outline" size="lg">
+                          <Pause className="mr-2 h-5 w-5" />
+                          Pausar
+                        </Button>
+                      ) : (
+                        <Button onClick={resumeRecording} variant="outline" size="lg">
+                          <Play className="mr-2 h-5 w-5" />
+                          Retomar
+                        </Button>
+                      )}
+                      <Button onClick={stopRecording} variant="destructive" size="lg" className="shadow-md transition-transform hover:scale-105">
+                        <StopCircle className="mr-2 h-5 w-5" />
+                        Parar
+                      </Button>
+                    </div>
+                  </>
+                ) : status === 'processing' ? (
+                   <div className="flex flex-col items-center gap-4">
+                      <div className="relative flex h-32 w-32 items-center justify-center">
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <Loader2 className="h-40 w-40 animate-spin text-destructive/50" />
+                        </div>
+                         <Button
+                          onClick={cancelProcessing}
+                          variant="destructive"
+                          className={cn(
+                            "h-32 w-32 rounded-full",
+                            "flex flex-col items-center justify-center gap-2",
+                            "transition-all duration-300 ease-in-out transform hover:scale-105",
+                            "text-lg font-bold shadow-lg"
+                          )}
+                          aria-label="Cancelar"
+                        >
+                          <Trash2 className="h-8 w-8" />
+                          <span>Cancelar</span>
+                        </Button>
+                      </div>
+                      <p className="text-sm font-medium text-destructive mt-2">Processando...</p>
+                    </div>
+                ) : (
+                   <div className="flex flex-col items-center gap-4 text-center">
+                      <Button
+                        onClick={startRecording}
+                        disabled={isAiProcessing}
                         className={cn(
-                          "h-32 w-32 rounded-full",
+                          "h-24 w-24 rounded-full",
                           "flex flex-col items-center justify-center gap-2",
                           "transition-all duration-300 ease-in-out transform hover:scale-105",
-                          "text-lg font-bold shadow-lg"
+                          "text-md font-bold shadow-lg"
                         )}
-                        aria-label="Cancelar"
+                        aria-label="Gravar"
                       >
-                        <Trash2 className="h-8 w-8" />
-                        <span>Cancelar</span>
+                        <Mic className="h-8 w-8" />
+                        <span>Gravar</span>
                       </Button>
-                    </div>
-                    <p className="text-sm font-medium text-destructive mt-2">Processando...</p>
-                  </div>
-              ) : (
-                 <div className="flex flex-col items-center gap-4 text-center">
-                    <Button
-                      onClick={startRecording}
-                      disabled={isAiProcessing}
-                      className={cn(
-                        "h-24 w-24 rounded-full",
-                        "flex flex-col items-center justify-center gap-2",
-                        "transition-all duration-300 ease-in-out transform hover:scale-105",
-                        "text-md font-bold shadow-lg"
-                      )}
-                      aria-label="Gravar"
-                    >
-                      <Mic className="h-8 w-8" />
-                      <span>Gravar</span>
-                    </Button>
-                    <div className="text-muted-foreground text-sm">ou</div>
-                    <Button variant="outline" onClick={triggerFileInput}>
-                        <UploadCloud className="mr-2 h-4 w-4" />
-                        Selecione um arquivo (MP3, MP4)
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-2">Você também pode arrastar e soltar um arquivo aqui.</p>
-                 </div>
-              )}
-            </div>
-        )}
-        
-        {status === 'processing' && (
-           <div className="flex items-center justify-center gap-2 text-primary font-medium">
-             <Loader2 className="h-5 w-5 animate-spin" />
-             <span>Transcrevendo, isso pode levar um momento...</span>
-           </div>
-        )}
-
-        {(status === 'file-loaded' && uploadedFile) && (
-            <div className="flex justify-center">
-                <Button onClick={handleTranscribeFile} size="lg" className="bg-accent hover:bg-accent/90">
-                    <FilePenLine className="mr-2 h-5 w-5"/>
-                    Transcrever Arquivo
-                </Button>
-            </div>
-        )}
-
-        <div className="space-y-2">
-            <div className="flex justify-end gap-2">
-              <Button
-                onClick={handleRewrite}
-                variant="outline"
-                disabled={isAiProcessing || !transcript}
-              >
-                {rewriteStatus === "processing" ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <FilePenLine className="mr-2 h-4 w-4" />
+                      <div className="text-muted-foreground text-sm">ou</div>
+                      <Button variant="outline" onClick={triggerFileInput}>
+                          <UploadCloud className="mr-2 h-4 w-4" />
+                          Selecione um arquivo (MP3, MP4)
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-2">Você também pode arrastar e soltar um arquivo aqui.</p>
+                   </div>
                 )}
-                {rewriteStatus === "processing" ? "Reescrevendo..." : "Reescrever"}
-              </Button>
-              <Button
-                onClick={handleExpansion}
-                variant="outline"
-                disabled={isAiProcessing || !transcript}
-              >
-                {expansionStatus === "processing" ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Wand2 className="mr-2 h-4 w-4" />
-                )}
-                {expansionStatus === "processing" ? "Expandindo..." : "Expandir"}
-              </Button>
-            </div>
-            <div className="relative">
-              <Textarea
-                placeholder={
-                  status === 'recording' ? 'Gravação em andamento...' : 
-                  status === 'paused' ? 'Gravação pausada...' :
-                  status === 'processing' ? 'Sua transcrição aparecerá aqui em breve...' :
-                  status === 'file-loaded' && uploadedFile ? `Pronto para transcrever "${uploadedFile?.name}". Clique em "Transcrever Arquivo".` :
-                  'Sua transcrição aparecerá aqui...'
-                }
-                value={transcript}
-                onChange={(e) => setTranscript(e.target.value)}
-                disabled={isAiProcessing || (status !== 'ready' && !uploadedFile)}
-                rows={8}
-                className="resize-none bg-secondary/50 rounded-lg text-base select-text"
-              />
-              {(isAiProcessing && chatStatus !== 'processing') && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-md">
-                  <div className="flex flex-col items-center gap-2 text-primary">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                    <span className="text-sm font-medium">
-                      {expansionStatus === "processing" ? "Expandindo texto..." : 
-                      "Reescrevendo texto..."}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+          )}
+
+          {status === 'processing' && (
+             <div className="flex items-center justify-center gap-2 text-primary font-medium">
+               <Loader2 className="h-5 w-5 animate-spin" />
+               <span>Transcrevendo, isso pode levar um momento...</span>
+             </div>
+          )}
+
+          {(status === 'file-loaded' && uploadedFile && !transcript) && (
+              <div className="flex justify-center mt-4">
+                  <Button onClick={handleTranscribeFile} size="lg" className="bg-accent hover:bg-accent/90">
+                      <FilePenLine className="mr-2 h-5 w-5"/>
+                      Transcrever Arquivo
+                  </Button>
+              </div>
+          )}
         </div>
 
-        {transcript && (status === 'ready' || status === 'file-loaded') && (
-          <div className="space-y-4">
-              <Card className="bg-secondary/30">
-                  <CardHeader className="pb-2 pt-4">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                          <Bot />
-                          Converse com a IA
-                      </CardTitle>
-                      <CardDescription>
-                          Faça perguntas sobre o conteúdo transcrito.
-                      </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                      <ScrollArea className="h-48 w-full pr-4" ref={chatScrollAreaRef}>
-                          <div className="space-y-4">
-                              {chatMessages.map((message, index) => (
-                                <div key={index} className={cn("flex items-start gap-3", message.sender === 'user' ? "justify-end" : "justify-start")}>
-                                    {message.sender === 'bot' && <Avatar className="h-8 w-8"><Bot className="h-5 w-5"/></Avatar>}
-                                    <div className={cn(
-                                        "max-w-xs rounded-lg px-4 py-2 text-sm",
-                                        message.sender === 'user' ? "bg-primary text-primary-foreground" : "bg-muted"
-                                    )}>
-                                        <p>{message.text}</p>
-                                    </div>
-                                    {message.sender === 'user' && <Avatar className="h-8 w-8"><User className="h-5 w-5"/></Avatar>}
-                                </div>
-                              ))}
-                              {chatStatus === 'processing' && (
-                                <div className="flex items-start gap-3 justify-start">
-                                    <Avatar className="h-8 w-8"><Bot className="h-5 w-5"/></Avatar>
-                                    <div className="bg-muted rounded-lg px-4 py-2 text-sm flex items-center gap-2">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        <span>Pensando...</span>
-                                    </div>
-                                </div>
-                              )}
-                          </div>
-                      </ScrollArea>
-                      <form onSubmit={handleChatSubmit} className="flex items-center gap-2">
-                          <Input 
-                              value={chatInput}
-                              onChange={(e) => setChatInput(e.target.value)}
-                              placeholder="O que foi falado no vídeo?"
-                              disabled={chatStatus === 'processing'}
-                          />
-                          <Button type="submit" disabled={chatStatus === 'processing' || !chatInput.trim()}>
-                              <Send className="h-4 w-4" />
-                          </Button>
-                      </form>
-                  </CardContent>
-              </Card>
+        {/* Coluna da Direita: Transcrição e Chat */}
+        <div className="space-y-4">
+          <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label htmlFor="transcription-area" className="text-sm font-medium">Sua Transcrição</Label>
+                <div className="flex gap-2">
+                <Button
+                  onClick={handleRewrite}
+                  variant="outline"
+                  size="sm"
+                  disabled={isAiProcessing || !transcript}
+                >
+                  {rewriteStatus === "processing" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FilePenLine className="h-4 w-4" />
+                  )}
+                  <span className="hidden sm:inline ml-2">{rewriteStatus === "processing" ? "Reescrevendo..." : "Reescrever"}</span>
+                </Button>
+                <Button
+                  onClick={handleExpansion}
+                  variant="outline"
+                  size="sm"
+                  disabled={isAiProcessing || !transcript}
+                >
+                  {expansionStatus === "processing" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-4 w-4" />
+                  )}
+                  <span className="hidden sm:inline ml-2">{expansionStatus === "processing" ? "Expandindo..." : "Expandir"}</span>
+                </Button>
+                </div>
+              </div>
+              <div className="relative">
+                <Textarea
+                  id="transcription-area"
+                  placeholder={
+                    status === 'recording' ? 'Gravação em andamento...' : 
+                    status === 'paused' ? 'Gravação pausada...' :
+                    status === 'processing' ? 'Sua transcrição aparecerá aqui em breve...' :
+                    status === 'file-loaded' && uploadedFile ? `Pronto para transcrever "${uploadedFile?.name}". Clique em "Transcrever Arquivo".` :
+                    'Sua transcrição aparecerá aqui...'
+                  }
+                  value={transcript}
+                  onChange={(e) => setTranscript(e.target.value)}
+                  disabled={isAiProcessing || (status !== 'ready' && status !== 'file-loaded')}
+                  rows={8}
+                  className="resize-none bg-secondary/50 rounded-lg text-base select-text"
+                />
+                {(isAiProcessing && chatStatus !== 'processing') && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-md">
+                    <div className="flex flex-col items-center gap-2 text-primary">
+                      <Loader2 className="h-8 w-8 animate-spin" />
+                      <span className="text-sm font-medium">
+                        {expansionStatus === "processing" ? "Expandindo texto..." : 
+                        "Reescrevendo texto..."}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
           </div>
-        )}
 
-      </CardContent>
-      <CardFooter className="flex items-center justify-between gap-4">
+          {transcript && (status === 'ready' || status === 'file-loaded') && (
+            <div className="space-y-4">
+                <Card className="bg-secondary/30">
+                    <CardHeader className="pb-2 pt-4">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Bot />
+                            Converse com a IA
+                        </CardTitle>
+                        <CardDescription>
+                            Faça perguntas sobre o conteúdo transcrito.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <ScrollArea className="h-48 w-full pr-4" ref={chatScrollAreaRef}>
+                            <div className="space-y-4">
+                                {chatMessages.map((message, index) => (
+                                  <div key={index} className={cn("flex items-start gap-3", message.sender === 'user' ? "justify-end" : "justify-start")}>
+                                      {message.sender === 'bot' && <Avatar className="h-8 w-8"><Bot className="h-5 w-5"/></Avatar>}
+                                      <div className={cn(
+                                          "max-w-xs rounded-lg px-4 py-2 text-sm",
+                                          message.sender === 'user' ? "bg-primary text-primary-foreground" : "bg-muted"
+                                      )}>
+                                          <p>{message.text}</p>
+                                      </div>
+                                      {message.sender === 'user' && <Avatar className="h-8 w-8"><User className="h-5 w-5"/></Avatar>}
+                                  </div>
+                                ))}
+                                {chatStatus === 'processing' && (
+                                  <div className="flex items-start gap-3 justify-start">
+                                      <Avatar className="h-8 w-8"><Bot className="h-5 w-5"/></Avatar>
+                                      <div className="bg-muted rounded-lg px-4 py-2 text-sm flex items-center gap-2">
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                          <span>Pensando...</span>
+                                      </div>
+                                  </div>
+                                )}
+                            </div>
+                        </ScrollArea>
+                        <form onSubmit={handleChatSubmit} className="flex items-center gap-2">
+                            <Input 
+                                value={chatInput}
+                                onChange={(e) => setChatInput(e.target.value)}
+                                placeholder="O que foi falado no vídeo?"
+                                disabled={chatStatus === 'processing'}
+                            />
+                            <Button type="submit" disabled={chatStatus === 'processing' || !chatInput.trim()}>
+                                <Send className="h-4 w-4" />
+                            </Button>
+                        </form>
+                    </CardContent>
+                </Card>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* Rodapé com ações */}
+      <div className="flex items-center justify-between gap-4 border-t pt-4 mt-6">
         <div className="flex items-center space-x-2">
           <Switch 
             id="noise-suppression-switch" 
             checked={isNoiseSuppressionEnabled}
             onCheckedChange={handleToggleNoiseSuppression}
           />
-          <Label htmlFor="noise-suppression-switch">Supressão de Ruído</Label>
+          <Label htmlFor="noise-suppression-switch" className="text-xs sm:text-sm">Supressão de Ruído</Label>
         </div>
-        <div className="flex items-center space-x-2">
-          <Switch 
-            id="animation-switch" 
-            checked={is3dEffectEnabled}
-            onCheckedChange={handleToggle3dEffect}
-          />
-          <Label htmlFor="animation-switch">Efeito 3D</Label>
-        </div>
+
         <div className="flex-1 text-center text-xs text-muted-foreground">
           <Dialog>
             <DialogTrigger asChild>
@@ -940,7 +902,7 @@ export default function AudioRecorder() {
             {isCopied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
             {isCopied ? "Copiado!" : "Copiar"}
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   );
 }
