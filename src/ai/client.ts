@@ -1,6 +1,5 @@
 // src/ai/client.ts
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-import pdf from 'pdf-parse/lib/pdf-parse';
 
 // Pega a chave de API diretamente das variáveis de ambiente do Next.js
 const apiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
@@ -93,8 +92,8 @@ export async function rewriteText(text: string) {
 
 // Função para extrair texto de um PDF
 export async function extractTextFromPDF(file: File) {
-    // pdf-parse usa pdf.js por baixo dos panos. É preciso configurar o worker.
-    // Esta é a forma de fazer isso no lado do cliente com Next.js
+    // Importação dinâmica para garantir que seja executado apenas no cliente
+    const pdf = (await import('pdf-parse/lib/pdf-parse.js')).default;
     const pdfjs = await import('pdfjs-dist/build/pdf');
     pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
 
