@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import AudioVisualizer from "./audio-visualizer";
 import { transcribeAudio, expandText, rewriteText, chatAboutContent } from "@/ai/client";
@@ -138,8 +139,6 @@ export default function AudioRecorder() {
         console.error("Transcription failed:", e);
         setError(getErrorMessage(e));
         setStatus("error");
-    } finally {
-      clearUploadedFile();
     }
   }, [isNoiseSuppressionEnabled]);
 
@@ -234,6 +233,7 @@ export default function AudioRecorder() {
   const startRecording = useCallback(async () => {
     try {
       isCancelledRef.current = false;
+      clearUploadedFile();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setMediaStream(stream);
       setStatus("recording");
@@ -384,6 +384,7 @@ export default function AudioRecorder() {
       setStatus("error");
       return;
     }
+    clearUploadedFile();
     setUploadedFile(file);
     setUploadedFileUrl(URL.createObjectURL(file));
     setStatus("file-loaded");
@@ -456,7 +457,8 @@ export default function AudioRecorder() {
   }, [chatMessages]);
   
   const isAiProcessing = expansionStatus === "processing" || rewriteStatus === "processing" || chatStatus === "processing";
-
+  const showPlayer = uploadedFile && uploadedFileUrl;
+  
   return (
     <Card 
       ref={cardRef}
@@ -479,11 +481,29 @@ export default function AudioRecorder() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+
+        {showPlayer && (
+          <div className="flex flex-col items-center gap-3 w-full">
+            <div className="relative w-full max-w-sm p-2 bg-secondary/50 rounded-lg shadow-inner">
+              {uploadedFile.type.startsWith('video') ? (
+                  <video src={uploadedFileUrl} controls className="w-full rounded-md" />
+              ) : (
+                  <audio src={uploadedFileUrl} controls className="w-full" />
+              )}
+              <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80 z-10" onClick={clearUploadedFile}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+             <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFile.name}</p>
+          </div>
+        )}
+
         <div 
             className={cn(
               "flex flex-col justify-center items-center py-4 min-h-[180px] gap-4 border-2 border-dashed rounded-lg transition-colors duration-200",
               {"border-primary bg-primary/10": dragOver},
-              {"border-border": !dragOver}
+              {"border-border": !dragOver},
+              {"hidden": showPlayer && status !== 'idle'}
             )}
             onDrop={handleDrop}
             onDragEnter={handleDragEvents}
@@ -522,7 +542,7 @@ export default function AudioRecorder() {
                 </Button>
               </div>
             </>
-          ) : status === 'processing' ? (
+          ) : status === 'processing' && !showPlayer ? (
              <div className="flex flex-col items-center gap-4">
                 <div className="relative flex h-32 w-32 items-center justify-center">
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -545,23 +565,6 @@ export default function AudioRecorder() {
                 </div>
                 <p className="text-sm font-medium text-destructive mt-2">Processando...</p>
               </div>
-          ) : status === 'file-loaded' && uploadedFile && uploadedFileUrl ? (
-            <div className="flex flex-col items-center gap-3 w-full">
-              <div className="relative w-full max-w-sm p-2 bg-secondary rounded-md">
-                {uploadedFile.type.startsWith('video') ? (
-                    <video src={uploadedFileUrl} controls className="w-full rounded" />
-                ) : (
-                    <audio src={uploadedFileUrl} controls className="w-full" />
-                )}
-                <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80" onClick={clearUploadedFile}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFile.name}</p>
-              <Button onClick={handleTranscribeFile} size="lg" className="bg-accent hover:bg-accent/90">
-                Transcrever Arquivo
-              </Button>
-            </div>
           ) : (
              <div className="flex flex-col items-center gap-4 text-center">
                 <Button
@@ -587,6 +590,23 @@ export default function AudioRecorder() {
              </div>
           )}
         </div>
+        
+        {status === 'processing' && showPlayer && (
+           <div className="flex items-center justify-center gap-2 text-primary font-medium">
+             <Loader2 className="h-5 w-5 animate-spin" />
+             <span>Transcrevendo, isso pode levar um momento...</span>
+           </div>
+        )}
+
+        {(status === 'file-loaded' && uploadedFile) && (
+            <div className="flex justify-center">
+                <Button onClick={handleTranscribeFile} size="lg" className="bg-accent hover:bg-accent/90">
+                    <FilePenLine className="mr-2 h-5 w-5"/>
+                    Transcrever Arquivo
+                </Button>
+            </div>
+        )}
+
         <div className="space-y-2">
             <div className="flex justify-end gap-2">
               <Button
@@ -625,7 +645,7 @@ export default function AudioRecorder() {
                 }
                 value={transcript}
                 onChange={(e) => setTranscript(e.target.value)}
-                disabled={isAiProcessing || status !== 'ready'}
+                disabled={isAiProcessing || (status !== 'ready' && status !== 'file-loaded')}
                 rows={8}
                 className="resize-none bg-secondary/50 rounded-lg text-base select-text"
               />
@@ -643,7 +663,7 @@ export default function AudioRecorder() {
             </div>
         </div>
 
-        {transcript && status === 'ready' && (
+        {transcript && (status === 'ready' || status === 'file-loaded') && (
           <div className="space-y-4">
               <Card className="bg-secondary/30">
                   <CardHeader className="pb-2 pt-4">
@@ -660,19 +680,19 @@ export default function AudioRecorder() {
                           <div className="space-y-4">
                               {chatMessages.map((message, index) => (
                                 <div key={index} className={cn("flex items-start gap-3", message.sender === 'user' ? "justify-end" : "justify-start")}>
-                                    {message.sender === 'bot' && <Avatar className="h-8 w-8"><Avatar><Bot className="h-5 w-5"/></Avatar></Avatar>}
+                                    {message.sender === 'bot' && <Avatar className="h-8 w-8"><Bot className="h-5 w-5"/></Avatar>}
                                     <div className={cn(
                                         "max-w-xs rounded-lg px-4 py-2 text-sm",
                                         message.sender === 'user' ? "bg-primary text-primary-foreground" : "bg-muted"
                                     )}>
                                         <p>{message.text}</p>
                                     </div>
-                                    {message.sender === 'user' && <Avatar className="h-8 w-8"><Avatar><User className="h-5 w-5"/></Avatar></Avatar>}
+                                    {message.sender === 'user' && <Avatar className="h-8 w-8"><User className="h-5 w-5"/></Avatar>}
                                 </div>
                               ))}
                               {chatStatus === 'processing' && (
                                 <div className="flex items-start gap-3 justify-start">
-                                    <Avatar className="h-8 w-8"><Avatar><Bot className="h-5 w-5"/></Avatar></Avatar>
+                                    <Avatar className="h-8 w-8"><Bot className="h-5 w-5"/></Avatar>
                                     <div className="bg-muted rounded-lg px-4 py-2 text-sm flex items-center gap-2">
                                         <Loader2 className="h-4 w-4 animate-spin" />
                                         <span>Pensando...</span>
@@ -781,3 +801,4 @@ export default function AudioRecorder() {
     </Card>
   );
 }
+
