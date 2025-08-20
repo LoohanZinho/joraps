@@ -89,3 +89,22 @@ export async function rewriteText(text: string) {
   const result = await mainModel.generateContent(prompt);
   return { rewrittenText: result.response.text() };
 }
+
+// Função de Chat sobre o conteúdo
+export async function chatAboutContent(transcript: string, question: string) {
+    const prompt = `
+    Você é um assistente de IA. Sua única função é responder a perguntas com base no conteúdo de uma transcrição fornecida.
+    NÃO use nenhum conhecimento externo. Baseie sua resposta estritamente no texto a seguir. Se a resposta não estiver no texto, diga "A informação não está disponível na transcrição."
+
+    Transcrição:
+    """
+    ${transcript}
+    """
+
+    Pergunta do usuário: "${question}"
+
+    Sua resposta:
+  `;
+  const result = await mainModel.generateContent(prompt);
+  return { answer: result.response.text() };
+}

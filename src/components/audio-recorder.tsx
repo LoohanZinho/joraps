@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useCallback, MouseEvent, useEffect, DragEvent } from "react";
-import { Mic, StopCircle, Copy, Check, Loader2, AlertCircle, Wand2, Pause, Play, Timer, Trash2, FilePenLine, UploadCloud, X } from "lucide-react";
+import { Mic, StopCircle, Copy, Check, Loader2, AlertCircle, Wand2, Pause, Play, Timer, Trash2, FilePenLine, UploadCloud, X, Send, Bot, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -12,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import AudioVisualizer from "./audio-visualizer";
-import { transcribeAudio, expandText, rewriteText } from "@/ai/client";
+import { transcribeAudio, expandText, rewriteText, chatAboutContent } from "@/ai/client";
 
 type Status = "idle" | "recording" | "paused" | "processing" | "ready" | "error" | "file-loaded";
 type AiActionStatus = "idle" | "processing" | "error";
@@ -22,10 +23,16 @@ interface TranscriptionHistoryItem {
   date: string;
 }
 
+interface ChatMessage {
+  sender: 'user' | 'bot';
+  text: string;
+}
+
 export default function AudioRecorder() {
   const [status, setStatus] = useState<Status>("idle");
   const [expansionStatus, setExpansionStatus] = useState<AiActionStatus>("idle");
   const [rewriteStatus, setRewriteStatus] = useState<AiActionStatus>("idle");
+  const [chatStatus, setChatStatus] = useState<AiActionStatus>("idle");
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -39,6 +46,8 @@ export default function AudioRecorder() {
   const [dragOver, setDragOver] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -46,6 +55,7 @@ export default function AudioRecorder() {
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isCancelledRef = useRef(false);
+  const chatScrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -88,6 +98,7 @@ export default function AudioRecorder() {
     isCancelledRef.current = false;
     setStatus("processing");
     setError(null);
+    setChatMessages([]);
 
     if (blob.size < 1000) {
         setError("Nenhum áudio foi gravado ou o arquivo está vazio. A gravação pode estar vazia ou muito curta.");
@@ -221,7 +232,6 @@ export default function AudioRecorder() {
 
 
   const startRecording = useCallback(async () => {
-    if(status !== 'idle') return;
     try {
       isCancelledRef.current = false;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -230,6 +240,7 @@ export default function AudioRecorder() {
       setTranscript("");
       setError(null);
       setRecordingTime(0);
+      setChatMessages([]);
       audioChunksRef.current = [];
       const mimeTypes = [
         "audio/webm; codecs=opus",
@@ -288,7 +299,7 @@ export default function AudioRecorder() {
       setError(errorMessage);
       setStatus("error");
     }
-  }, [handleTranscription, status]);
+  }, [handleTranscription]);
   
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && (status === "recording" || status === "paused")) {
@@ -316,24 +327,8 @@ export default function AudioRecorder() {
   }, []);
 
   const cancelProcessing = useCallback(() => {
-    isCancelledRef.current = true;
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    // Reinicializa o estado para permitir uma nova gravação ou upload
-    setStatus('idle');
-    setTranscript('');
-    setError(null);
-    setRecordingTime(0);
-    audioChunksRef.current = [];
-    if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        setMediaStream(null);
-    }
-    clearUploadedFile();
-    // A linha abaixo causava o comportamento indesejado. A melhor abordagem é resetar o estado.
-    // window.location.reload(); 
-  }, [mediaStream]);
+     window.location.reload(); 
+  }, []);
 
 
   const handleCopy = () => {
@@ -365,7 +360,6 @@ export default function AudioRecorder() {
     return `${minutes}:${seconds}`;
   };
 
-  // Funções de Drag and Drop e Upload
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -395,6 +389,7 @@ export default function AudioRecorder() {
     setStatus("file-loaded");
     setError(null);
     setTranscript("");
+    setChatMessages([]);
   };
 
   const clearUploadedFile = () => {
@@ -430,8 +425,37 @@ export default function AudioRecorder() {
   const triggerFileInput = () => {
     fileInputRef.current?.click();
   };
+
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !transcript) return;
+
+    const newMessages: ChatMessage[] = [...chatMessages, { sender: 'user', text: chatInput }];
+    setChatMessages(newMessages);
+    const question = chatInput;
+    setChatInput("");
+    setChatStatus("processing");
+    setError(null);
+
+    try {
+      const result = await chatAboutContent(transcript, question);
+      setChatMessages([...newMessages, { sender: 'bot', text: result.answer }]);
+    } catch (e: unknown) {
+      const errorMessage = getErrorMessage(e);
+      setError(`Chat Error: ${errorMessage}`);
+      setChatMessages([...newMessages, { sender: 'bot', text: `Desculpe, ocorreu um erro: ${errorMessage}` }]);
+    } finally {
+      setChatStatus("idle");
+    }
+  };
   
-  const isAiProcessing = expansionStatus === "processing" || rewriteStatus === "processing";
+  useEffect(() => {
+    if (chatScrollAreaRef.current) {
+      chatScrollAreaRef.current.scrollTop = chatScrollAreaRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
+  
+  const isAiProcessing = expansionStatus === "processing" || rewriteStatus === "processing" || chatStatus === "processing";
 
   return (
     <Card 
@@ -445,10 +469,10 @@ export default function AudioRecorder() {
       className="w-full shadow-2xl shadow-primary/10 border-primary/20 rounded-2xl will-change-transform">
       <CardHeader className="text-center">
         <CardTitle>Sua Ferramenta de Mídia Inteligente</CardTitle>
-        <CardDescription>Grave áudios ou carregue arquivos MP3/MP4 para transcrever.</CardDescription>
+        <CardDescription>Grave áudios, carregue arquivos MP3/MP4 para transcrever e converse com a IA sobre o conteúdo.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {(status === 'error' || expansionStatus === 'error' || rewriteStatus === 'error') && error && (
+        {(status === 'error' || expansionStatus === 'error' || rewriteStatus === 'error' || chatStatus === 'error') && error && (
            <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Erro</AlertTitle>
@@ -602,10 +626,10 @@ export default function AudioRecorder() {
                 value={transcript}
                 onChange={(e) => setTranscript(e.target.value)}
                 disabled={isAiProcessing || status !== 'ready'}
-                rows={10}
+                rows={8}
                 className="resize-none bg-secondary/50 rounded-lg text-base select-text"
               />
-              {(isAiProcessing) && (
+              {(isAiProcessing && chatStatus !== 'processing') && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-md">
                   <div className="flex flex-col items-center gap-2 text-primary">
                     <Loader2 className="h-8 w-8 animate-spin" />
@@ -618,6 +642,61 @@ export default function AudioRecorder() {
               )}
             </div>
         </div>
+
+        {transcript && status === 'ready' && (
+          <div className="space-y-4">
+              <Card className="bg-secondary/30">
+                  <CardHeader className="pb-2 pt-4">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                          <Bot />
+                          Converse com a IA
+                      </CardTitle>
+                      <CardDescription>
+                          Faça perguntas sobre o conteúdo transcrito.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                      <ScrollArea className="h-48 w-full pr-4" ref={chatScrollAreaRef}>
+                          <div className="space-y-4">
+                              {chatMessages.map((message, index) => (
+                                <div key={index} className={cn("flex items-start gap-3", message.sender === 'user' ? "justify-end" : "justify-start")}>
+                                    {message.sender === 'bot' && <Avatar className="h-8 w-8"><Avatar><Bot className="h-5 w-5"/></Avatar></Avatar>}
+                                    <div className={cn(
+                                        "max-w-xs rounded-lg px-4 py-2 text-sm",
+                                        message.sender === 'user' ? "bg-primary text-primary-foreground" : "bg-muted"
+                                    )}>
+                                        <p>{message.text}</p>
+                                    </div>
+                                    {message.sender === 'user' && <Avatar className="h-8 w-8"><Avatar><User className="h-5 w-5"/></Avatar></Avatar>}
+                                </div>
+                              ))}
+                              {chatStatus === 'processing' && (
+                                <div className="flex items-start gap-3 justify-start">
+                                    <Avatar className="h-8 w-8"><Avatar><Bot className="h-5 w-5"/></Avatar></Avatar>
+                                    <div className="bg-muted rounded-lg px-4 py-2 text-sm flex items-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <span>Pensando...</span>
+                                    </div>
+                                </div>
+                              )}
+                          </div>
+                      </ScrollArea>
+                      <form onSubmit={handleChatSubmit} className="flex items-center gap-2">
+                          <Input 
+                              value={chatInput}
+                              onChange={(e) => setChatInput(e.target.value)}
+                              placeholder="O que foi falado no vídeo?"
+                              disabled={chatStatus === 'processing'}
+                          />
+                          <Button type="submit" disabled={chatStatus === 'processing' || !chatInput.trim()}>
+                              <Send className="h-4 w-4" />
+                          </Button>
+                      </form>
+                  </CardContent>
+              </Card>
+          </div>
+        )}
+
       </CardContent>
       <CardFooter className="flex items-center justify-between gap-4">
         <div className="flex items-center space-x-2">
