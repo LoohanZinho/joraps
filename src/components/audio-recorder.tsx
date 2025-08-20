@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, MouseEvent, useEffect, DragEvent } from "react";
-import { Mic, StopCircle, Copy, Check, Loader2, AlertCircle, Wand2, Pause, Play, Timer, Trash2, FilePenLine, UploadCloud, X, Send, Bot, User, Volume2, Volume1, VolumeX } from "lucide-react";
+import { Mic, StopCircle, Copy, Check, Loader2, AlertCircle, Wand2, Pause, Play, Timer, Trash2, FilePenLine, UploadCloud, X, Send, Bot, User, Volume2, Volume1, VolumeX, File as FileIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,10 +15,12 @@ import { Avatar } from "@/components/ui/avatar";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import AudioVisualizer from "./audio-visualizer";
-import { transcribeAudio, expandText, rewriteText, chatAboutContent } from "@/ai/client";
+import { transcribeAudio, expandText, rewriteText, chatAboutContent, extractTextFromPDF } from "@/ai/client";
 
 type Status = "idle" | "recording" | "paused" | "processing" | "ready" | "error" | "file-loaded" | "recorded";
 type AiActionStatus = "idle" | "processing" | "error";
+type FileType = 'audio' | 'video' | 'pdf' | null;
+
 
 interface TranscriptionHistoryItem {
   text: string;
@@ -228,6 +230,7 @@ export default function AudioRecorder() {
   const [dragOver, setDragOver] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
+  const [uploadedFileType, setUploadedFileType] = useState<FileType>(null);
   const [recordedAudio, setRecordedAudio] = useState<{ blob: Blob; url: string; } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -278,25 +281,30 @@ export default function AudioRecorder() {
     setError(null);
     if(chatMessages.length > 0) setChatMessages([]);
 
-    if (blob.size < 1000) {
+    if (blob.size < 1000 && blob.type !== 'application/pdf') {
         setError("Nenhum áudio foi gravado ou o arquivo está vazio. A gravação pode estar vazia ou muito curta.");
         setStatus("error");
         return;
     }
     try {
-        const audioDataUri = await blobToDataUri(blob);
-        const parts = audioDataUri.split(',');
-        const mimeType = parts[0].split(':')[1].split(';')[0];
-        const audioData = parts[1];
-
-        if (isCancelledRef.current) return;
-
-        const result = await transcribeAudio(mimeType, audioData, isNoiseSuppressionEnabled);
+        let resultText = "";
+        if (blob.type.startsWith('audio/') || blob.type.startsWith('video/')) {
+            const audioDataUri = await blobToDataUri(blob);
+            const parts = audioDataUri.split(',');
+            const mimeType = parts[0].split(':')[1].split(';')[0];
+            const audioData = parts[1];
+            if (isCancelledRef.current) return;
+            const result = await transcribeAudio(mimeType, audioData, isNoiseSuppressionEnabled);
+            resultText = result.transcription;
+        } else if (blob.type === 'application/pdf') {
+            if (isCancelledRef.current) return;
+            const result = await extractTextFromPDF(blob as File);
+            resultText = result.extractedText;
+        }
         
-        if (result && result.transcription) {
-            const newTranscription = result.transcription;
-            setTranscript(newTranscription);
-            const newItem: TranscriptionHistoryItem = { text: newTranscription, date: new Date().toISOString() };
+        if (resultText) {
+            setTranscript(resultText);
+            const newItem: TranscriptionHistoryItem = { text: resultText, date: new Date().toISOString() };
             
             setTranscriptionHistory(prevHistory => {
               const newHistory = [newItem, ...prevHistory];
@@ -309,11 +317,11 @@ export default function AudioRecorder() {
             });
             setStatus(uploadedFile ? "file-loaded" : "ready");
         } else {
-             setError("Não foi possível transcrever o áudio. A resposta da IA estava vazia.");
+             setError("Não foi possível processar o arquivo. A resposta da IA estava vazia.");
              setStatus("error");
         }
     } catch (e: unknown) {
-        console.error("Transcription failed:", e);
+        console.error("Processing failed:", e);
         setError(getErrorMessage(e));
         setStatus("error");
     } finally {
@@ -535,15 +543,26 @@ export default function AudioRecorder() {
   };
 
   const loadFile = (file: File) => {
-    const validTypes = ["audio/mpeg", "audio/mp4", "video/mp4", "audio/mp3", "audio/webm", "video/webm"];
-    if (!validTypes.includes(file.type)) {
-      setError(`Formato de arquivo não suportado: ${file.type}. Por favor, use MP3, MP4 ou WEBM.`);
-      setStatus("error");
-      return;
+    const validAudioVideoTypes = ["audio/mpeg", "audio/mp4", "video/mp4", "audio/mp3", "audio/webm", "video/webm"];
+    const validPDFTypes = ["application/pdf"];
+    
+    let fileType: FileType = null;
+    if (validAudioVideoTypes.includes(file.type)) {
+        fileType = file.type.startsWith('video') ? 'video' : 'audio';
+    } else if (validPDFTypes.includes(file.type)) {
+        fileType = 'pdf';
+    } else {
+        setError(`Formato de arquivo não suportado: ${file.type}. Por favor, use MP3, MP4, WEBM ou PDF.`);
+        setStatus("error");
+        return;
     }
+
     clearUploadedFile();
     setUploadedFile(file);
-    setUploadedFileUrl(URL.createObjectURL(file));
+    setUploadedFileType(fileType);
+    if(fileType !== 'pdf') {
+       setUploadedFileUrl(URL.createObjectURL(file));
+    }
     setStatus("file-loaded");
     setError(null);
     setTranscript("");
@@ -556,6 +575,7 @@ export default function AudioRecorder() {
     }
     setUploadedFile(null);
     setUploadedFileUrl(null);
+    setUploadedFileType(null);
     if(['file-loaded', 'ready', 'error', 'processing'].includes(status)) {
         setStatus("idle");
     }
@@ -619,7 +639,6 @@ export default function AudioRecorder() {
   }, [chatMessages]);
   
   const isAiProcessing = expansionStatus === "processing" || rewriteStatus === "processing" || chatStatus === "processing";
-  const showPlayer = !!uploadedFileUrl;
   
   const cancelAndReset = () => {
     if (recordedAudio?.url) {
@@ -642,20 +661,28 @@ export default function AudioRecorder() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Coluna da Esquerda: Player ou Gravação */}
         <div className="flex flex-col items-center justify-center bg-secondary/50 rounded-lg p-4 min-h-[300px]">
-          {showPlayer ? (
+          {uploadedFile ? (
               <div className="flex flex-col items-center gap-3 w-full">
                   <div className="relative w-full">
-                      <CustomMediaPlayer 
-                          file={uploadedFile}
-                          url={uploadedFileUrl} 
-                          type={uploadedFile?.type.startsWith('video') ? 'video' : 'audio'}
-                          onEnded={() => {
-                              // Opcional: fazer algo quando a mídia terminar
-                          }}
-                      />
-                      <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80 z-10" onClick={clearUploadedFile}>
-                          <X className="h-4 w-4" />
-                      </Button>
+                    {(uploadedFileType === 'audio' || uploadedFileType === 'video') && uploadedFileUrl ? (
+                         <CustomMediaPlayer 
+                            file={uploadedFile}
+                            url={uploadedFileUrl} 
+                            type={uploadedFileType}
+                            onEnded={() => {
+                                // Opcional: fazer algo quando a mídia terminar
+                            }}
+                        />
+                    ) : uploadedFileType === 'pdf' ? (
+                        <div className="w-full h-48 bg-black rounded-lg flex flex-col items-center justify-center text-white">
+                           <FileIcon className="w-16 h-16 mb-4"/>
+                           <p className="font-mono">{uploadedFile?.name}</p>
+                        </div>
+                    ) : null}
+
+                    <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80 z-10" onClick={clearUploadedFile}>
+                        <X className="h-4 w-4" />
+                    </Button>
                   </div>
                   <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFile?.name}</p>
               </div>
@@ -677,7 +704,7 @@ export default function AudioRecorder() {
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
-                  accept="audio/mpeg,audio/mp3,video/mp4,audio/mp4,audio/webm,video/webm"
+                  accept="audio/mpeg,audio/mp3,video/mp4,audio/mp4,audio/webm,video/webm,application/pdf"
                   className="hidden"
                 />
                 {status === 'recording' || status === 'paused' ? (
@@ -757,7 +784,7 @@ export default function AudioRecorder() {
                       <div className="text-muted-foreground text-sm">ou</div>
                       <Button variant="outline" onClick={triggerFileInput}>
                           <UploadCloud className="mr-2 h-4 w-4" />
-                          Selecione um arquivo (MP3, MP4)
+                          Selecione um arquivo (MP3, MP4, PDF)
                       </Button>
                       <p className="text-xs text-muted-foreground mt-2">Você também pode arrastar e soltar um arquivo aqui.</p>
                    </div>
@@ -768,7 +795,7 @@ export default function AudioRecorder() {
           {status === 'processing' && (
              <div className="flex items-center justify-center gap-2 text-primary font-medium">
                <Loader2 className="h-5 w-5 animate-spin" />
-               <span>Transcrevendo, isso pode levar um momento...</span>
+               <span>Processando, isso pode levar um momento...</span>
              </div>
           )}
 
@@ -776,7 +803,7 @@ export default function AudioRecorder() {
               <div className="flex justify-center mt-4">
                   <Button onClick={handleTranscribeFile} size="lg" className="bg-accent hover:bg-accent/90">
                       <FilePenLine className="mr-2 h-5 w-5"/>
-                      Transcrever Arquivo
+                      {uploadedFileType === 'pdf' ? 'Extrair Texto' : 'Transcrever Arquivo'}
                   </Button>
               </div>
           )}
@@ -786,7 +813,9 @@ export default function AudioRecorder() {
         <div className="space-y-4 flex flex-col h-full">
           <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label htmlFor="transcription-area" className="text-sm font-medium">Sua Transcrição</Label>
+                <Label htmlFor="transcription-area" className="text-sm font-medium">
+                    {uploadedFileType === 'pdf' ? 'Conteúdo do Documento' : 'Sua Transcrição'}
+                </Label>
                 <div className="flex gap-2">
                 <Button
                   onClick={handleRewrite}
@@ -823,7 +852,7 @@ export default function AudioRecorder() {
                     status === 'recording' ? 'Gravação em andamento...' : 
                     status === 'paused' ? 'Gravação pausada...' :
                     status === 'processing' ? 'Sua transcrição aparecerá aqui em breve...' :
-                    status === 'file-loaded' && uploadedFile ? `Pronto para transcrever "${uploadedFile?.name}". Clique em "Transcrever Arquivo".` :
+                    status === 'file-loaded' && uploadedFile ? `Pronto para processar "${uploadedFile?.name}". Clique em "${uploadedFileType === 'pdf' ? 'Extrair Texto' : 'Transcrever Arquivo'}".` :
                     status === 'recorded' ? 'Pronto para transcrever. Clique em "Transcrever".' :
                     'Sua transcrição aparecerá aqui...'
                   }
@@ -856,7 +885,7 @@ export default function AudioRecorder() {
                             Converse com a IA
                         </CardTitle>
                         <CardDescription>
-                            Faça perguntas sobre o conteúdo transcrito.
+                            Faça perguntas sobre o conteúdo do arquivo.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4 flex-1 flex flex-col min-h-0">
@@ -910,6 +939,7 @@ export default function AudioRecorder() {
             id="noise-suppression-switch" 
             checked={isNoiseSuppressionEnabled}
             onCheckedChange={handleToggleNoiseSuppression}
+            disabled={uploadedFileType === 'pdf'}
           />
           <Label htmlFor="noise-suppression-switch" className="text-xs sm:text-sm">Supressão de Ruído</Label>
         </div>

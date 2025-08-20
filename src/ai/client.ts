@@ -1,5 +1,6 @@
 // src/ai/client.ts
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import pdf from 'pdf-parse/lib/pdf-parse';
 
 // Pega a chave de API diretamente das variáveis de ambiente do Next.js
 const apiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
@@ -89,6 +90,14 @@ export async function rewriteText(text: string) {
   const result = await mainModel.generateContent(prompt);
   return { rewrittenText: result.response.text() };
 }
+
+// Função para extrair texto de um PDF
+export async function extractTextFromPDF(file: File) {
+    const arrayBuffer = await file.arrayBuffer();
+    const data = await pdf(Buffer.from(arrayBuffer));
+    return { extractedText: data.text };
+}
+
 
 // Função de Chat sobre o conteúdo
 export async function chatAboutContent(transcript: string, history: Array<{ sender: 'user' | 'bot'; text: string }>, question: string) {
