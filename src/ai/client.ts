@@ -93,7 +93,7 @@ export async function rewriteText(text: string) {
 
 // Função para extrair texto de um PDF
 export async function extractTextFromPDF(file: File): Promise<{ extractedText: string }> {
-  // Dynamic import for client-side execution
+  // Dynamic import for client-side execution only
   const pdfjs = await import('pdfjs-dist/build/pdf');
   const pdfjsWorker = (await import('pdfjs-dist/build/pdf.worker.entry.js')).default;
   
