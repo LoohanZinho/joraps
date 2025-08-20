@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, MouseEvent, useEffect, DragEvent } from "react";
-import { Mic, StopCircle, Copy, Check, Loader2, AlertCircle, Wand2, Pause, Play, Timer, Trash2, FilePenLine, UploadCloud, X, Send, Bot, User } from "lucide-react";
+import { Mic, StopCircle, Copy, Check, Loader2, AlertCircle, Wand2, Pause, Play, Timer, Trash2, FilePenLine, UploadCloud, X, Send, Bot, User, Volume2, Volume1, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,7 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar } from "@/components/ui/avatar";
+import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import AudioVisualizer from "./audio-visualizer";
 import { transcribeAudio, expandText, rewriteText, chatAboutContent } from "@/ai/client";
@@ -27,6 +28,143 @@ interface TranscriptionHistoryItem {
 interface ChatMessage {
   sender: 'user' | 'bot';
   text: string;
+}
+
+
+// Componente do Player de Mídia Personalizado
+function CustomMediaPlayer({ file, url, type, onEnded }: { file: File | null, url: string, type: 'audio' | 'video', onEnded: () => void }) {
+    const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [volume, setVolume] = useState(1);
+    const [duration, setDuration] = useState(0);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [isMuted, setIsMuted] = useState(false);
+
+    useEffect(() => {
+        const media = mediaRef.current;
+        if (!media) return;
+
+        const setMediaData = () => {
+            setDuration(media.duration);
+            setCurrentTime(media.currentTime);
+        };
+
+        const setTime = () => {
+            const newTime = media.currentTime;
+            setCurrentTime(newTime);
+            setProgress((newTime / media.duration) * 100);
+        };
+
+        media.addEventListener('loadedmetadata', setMediaData);
+        media.addEventListener('timeupdate', setTime);
+        media.addEventListener('ended', onEnded);
+        
+        // Sincroniza o volume inicial
+        media.volume = volume;
+        media.muted = isMuted;
+
+        return () => {
+            media.removeEventListener('loadedmetadata', setMediaData);
+            media.removeEventListener('timeupdate', setTime);
+            media.removeEventListener('ended', onEnded);
+        };
+    }, [url, onEnded]);
+    
+    useEffect(() => {
+      const media = mediaRef.current;
+      if(media) {
+        media.volume = isMuted ? 0 : volume;
+      }
+    }, [volume, isMuted])
+
+    const togglePlay = () => {
+        const media = mediaRef.current;
+        if (media) {
+            if (isPlaying) {
+                media.pause();
+            } else {
+                media.play();
+            }
+            setIsPlaying(!isPlaying);
+        }
+    };
+
+    const handleProgressChange = (value: number[]) => {
+        const media = mediaRef.current;
+        if (media) {
+            const newTime = (value[0] / 100) * duration;
+            media.currentTime = newTime;
+            setCurrentTime(newTime);
+        }
+    };
+    
+    const handleVolumeChange = (value: number[]) => {
+        const newVolume = value[0];
+        setVolume(newVolume);
+        if(newVolume > 0 && isMuted) {
+            setIsMuted(false);
+        }
+    };
+    
+    const toggleMute = () => {
+        setIsMuted(!isMuted);
+    }
+
+    const formatTime = (time: number) => {
+        if (isNaN(time)) return '00:00';
+        const minutes = Math.floor(time / 60).toString().padStart(2, '0');
+        const seconds = Math.floor(time % 60).toString().padStart(2, '0');
+        return `${minutes}:${seconds}`;
+    };
+
+    const VolumeIcon = isMuted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
+
+    return (
+        <div className="relative w-full max-w-lg group/player">
+            {type === 'video' ? (
+                <video ref={mediaRef as React.RefObject<HTMLVideoElement>} src={url} className="w-full rounded-lg bg-black" />
+            ) : (
+                <div className="w-full h-48 bg-black rounded-lg flex items-center justify-center">
+                    {/* Placeholder para visualização de áudio se desejado */}
+                    <p className="text-white font-mono">{file?.name}</p>
+                </div>
+            )}
+             <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover/player:opacity-100 transition-opacity duration-300 rounded-b-lg">
+                <div className="flex flex-col gap-2">
+                    <Slider
+                        value={[progress]}
+                        onValueChange={handleProgressChange}
+                        max={100}
+                        step={0.1}
+                        className="w-full h-2 cursor-pointer"
+                    />
+                    <div className="flex items-center justify-between text-white">
+                        <div className="flex items-center gap-3">
+                            <Button onClick={togglePlay} variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white">
+                                {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+                            </Button>
+                            <div className="flex items-center gap-2 group/volume">
+                                <Button onClick={toggleMute} variant="ghost" size="icon" className="text-white hover:bg-white/20 hover:text-white">
+                                  <VolumeIcon className="w-6 h-6"/>
+                                </Button>
+                                <Slider
+                                    value={[isMuted ? 0 : volume]}
+                                    onValueChange={handleVolumeChange}
+                                    max={1}
+                                    step={0.05}
+                                    className="w-24 h-2 cursor-pointer transition-all duration-300"
+                                />
+                            </div>
+                        </div>
+                        <div className="font-mono text-sm">
+                            {formatTime(currentTime)} / {formatTime(duration)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 export default function AudioRecorder() {
@@ -99,7 +237,7 @@ export default function AudioRecorder() {
     isCancelledRef.current = false;
     setStatus("processing");
     setError(null);
-    setChatMessages([]);
+    if(chatMessages.length > 0) setChatMessages([]);
 
     if (blob.size < 1000) {
         setError("Nenhum áudio foi gravado ou o arquivo está vazio. A gravação pode estar vazia ou muito curta.");
@@ -140,7 +278,7 @@ export default function AudioRecorder() {
         setError(getErrorMessage(e));
         setStatus("error");
     }
-  }, [isNoiseSuppressionEnabled]);
+  }, [isNoiseSuppressionEnabled, chatMessages]);
 
 
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
@@ -399,12 +537,15 @@ export default function AudioRecorder() {
     }
     setUploadedFile(null);
     setUploadedFileUrl(null);
-    if(status === 'file-loaded' || status === 'ready' || status === 'error') {
-      setStatus("idle");
+    if(['file-loaded', 'ready', 'error', 'processing'].includes(status)) {
+        setStatus("idle");
     }
     if(fileInputRef.current) {
         fileInputRef.current.value = "";
     }
+    setTranscript("");
+    setChatMessages([]);
+    setError(null);
   };
 
   const handleTranscribeFile = () => {
@@ -457,7 +598,7 @@ export default function AudioRecorder() {
   }, [chatMessages]);
   
   const isAiProcessing = expansionStatus === "processing" || rewriteStatus === "processing" || chatStatus === "processing";
-  const showPlayer = uploadedFile && uploadedFileUrl;
+  const showPlayer = !!uploadedFileUrl;
   
   return (
     <Card 
@@ -482,116 +623,118 @@ export default function AudioRecorder() {
           </Alert>
         )}
 
-        {showPlayer && (
-          <div className="flex flex-col items-center gap-3 w-full">
-            <div className="relative w-full max-w-sm p-2 bg-secondary/50 rounded-lg shadow-inner">
-              {uploadedFile.type.startsWith('video') ? (
-                  <video src={uploadedFileUrl} controls className="w-full rounded-md" />
-              ) : (
-                  <audio src={uploadedFileUrl} controls className="w-full" />
-              )}
-              <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80 z-10" onClick={clearUploadedFile}>
-                <X className="h-4 w-4" />
-              </Button>
+        {showPlayer ? (
+            <div className="flex flex-col items-center gap-3 w-full">
+                <div className="relative w-full">
+                    <CustomMediaPlayer 
+                        file={uploadedFile}
+                        url={uploadedFileUrl} 
+                        type={uploadedFile?.type.startsWith('video') ? 'video' : 'audio'}
+                        onEnded={() => {
+                            // Opcional: fazer algo quando a mídia terminar
+                        }}
+                    />
+                    <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/80 z-10" onClick={clearUploadedFile}>
+                        <X className="h-4 w-4" />
+                    </Button>
+                </div>
+                 <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFile?.name}</p>
             </div>
-             <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFile.name}</p>
-          </div>
-        )}
-
-        <div 
-            className={cn(
-              "flex flex-col justify-center items-center py-4 min-h-[180px] gap-4 border-2 border-dashed rounded-lg transition-colors duration-200",
-              {"border-primary bg-primary/10": dragOver},
-              {"border-border": !dragOver},
-              {"hidden": showPlayer && status !== 'idle'}
-            )}
-            onDrop={handleDrop}
-            onDragEnter={handleDragEvents}
-            onDragLeave={handleDragEvents}
-            onDragOver={handleDragEvents}
-        >
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept="audio/mpeg,audio/mp3,video/mp4,audio/mp4,audio/webm,video/webm"
-            className="hidden"
-          />
-          {status === 'recording' || status === 'paused' ? (
-            <>
-              {mediaStream && <AudioVisualizer mediaStream={mediaStream} isSuppressed={isNoiseSuppressionEnabled} />}
-              <div className="flex w-full items-center justify-center gap-4">
-                 <div className="flex items-center gap-2 text-muted-foreground font-mono text-lg">
-                    <Timer className="h-5 w-5"/>
-                    <span>{formatTime(recordingTime)}</span>
-                </div>
-                {status === 'recording' ? (
-                  <Button onClick={pauseRecording} variant="outline" size="lg">
-                    <Pause className="mr-2 h-5 w-5" />
-                    Pausar
-                  </Button>
-                ) : (
-                  <Button onClick={resumeRecording} variant="outline" size="lg">
-                    <Play className="mr-2 h-5 w-5" />
-                    Retomar
-                  </Button>
+        ) : (
+            <div 
+                className={cn(
+                  "flex flex-col justify-center items-center py-4 min-h-[180px] gap-4 border-2 border-dashed rounded-lg transition-colors duration-200",
+                  {"border-primary bg-primary/10": dragOver},
+                  {"border-border": !dragOver},
                 )}
-                <Button onClick={stopRecording} variant="destructive" size="lg" className="shadow-md transition-transform hover:scale-105">
-                  <StopCircle className="mr-2 h-5 w-5" />
-                  Parar
-                </Button>
-              </div>
-            </>
-          ) : status === 'processing' && !showPlayer ? (
-             <div className="flex flex-col items-center gap-4">
-                <div className="relative flex h-32 w-32 items-center justify-center">
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <Loader2 className="h-40 w-40 animate-spin text-destructive/50" />
-                  </div>
-                   <Button
-                    onClick={cancelProcessing}
-                    variant="destructive"
-                    className={cn(
-                      "h-32 w-32 rounded-full",
-                      "flex flex-col items-center justify-center gap-2",
-                      "transition-all duration-300 ease-in-out transform hover:scale-105",
-                      "text-lg font-bold shadow-lg"
+                onDrop={handleDrop}
+                onDragEnter={handleDragEvents}
+                onDragLeave={handleDragEvents}
+                onDragOver={handleDragEvents}
+            >
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept="audio/mpeg,audio/mp3,video/mp4,audio/mp4,audio/webm,video/webm"
+                className="hidden"
+              />
+              {status === 'recording' || status === 'paused' ? (
+                <>
+                  {mediaStream && <AudioVisualizer mediaStream={mediaStream} isSuppressed={isNoiseSuppressionEnabled} />}
+                  <div className="flex w-full items-center justify-center gap-4">
+                     <div className="flex items-center gap-2 text-muted-foreground font-mono text-lg">
+                        <Timer className="h-5 w-5"/>
+                        <span>{formatTime(recordingTime)}</span>
+                    </div>
+                    {status === 'recording' ? (
+                      <Button onClick={pauseRecording} variant="outline" size="lg">
+                        <Pause className="mr-2 h-5 w-5" />
+                        Pausar
+                      </Button>
+                    ) : (
+                      <Button onClick={resumeRecording} variant="outline" size="lg">
+                        <Play className="mr-2 h-5 w-5" />
+                        Retomar
+                      </Button>
                     )}
-                    aria-label="Cancelar"
-                  >
-                    <Trash2 className="h-8 w-8" />
-                    <span>Cancelar</span>
-                  </Button>
-                </div>
-                <p className="text-sm font-medium text-destructive mt-2">Processando...</p>
-              </div>
-          ) : (
-             <div className="flex flex-col items-center gap-4 text-center">
-                <Button
-                  onClick={startRecording}
-                  disabled={isAiProcessing}
-                  className={cn(
-                    "h-24 w-24 rounded-full",
-                    "flex flex-col items-center justify-center gap-2",
-                    "transition-all duration-300 ease-in-out transform hover:scale-105",
-                    "text-md font-bold shadow-lg"
-                  )}
-                  aria-label="Gravar"
-                >
-                  <Mic className="h-8 w-8" />
-                  <span>Gravar</span>
-                </Button>
-                <div className="text-muted-foreground text-sm">ou</div>
-                <Button variant="outline" onClick={triggerFileInput}>
-                    <UploadCloud className="mr-2 h-4 w-4" />
-                    Selecione um arquivo (MP3, MP4)
-                </Button>
-                <p className="text-xs text-muted-foreground mt-2">Você também pode arrastar e soltar um arquivo aqui.</p>
-             </div>
-          )}
-        </div>
+                    <Button onClick={stopRecording} variant="destructive" size="lg" className="shadow-md transition-transform hover:scale-105">
+                      <StopCircle className="mr-2 h-5 w-5" />
+                      Parar
+                    </Button>
+                  </div>
+                </>
+              ) : status === 'processing' ? (
+                 <div className="flex flex-col items-center gap-4">
+                    <div className="relative flex h-32 w-32 items-center justify-center">
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <Loader2 className="h-40 w-40 animate-spin text-destructive/50" />
+                      </div>
+                       <Button
+                        onClick={cancelProcessing}
+                        variant="destructive"
+                        className={cn(
+                          "h-32 w-32 rounded-full",
+                          "flex flex-col items-center justify-center gap-2",
+                          "transition-all duration-300 ease-in-out transform hover:scale-105",
+                          "text-lg font-bold shadow-lg"
+                        )}
+                        aria-label="Cancelar"
+                      >
+                        <Trash2 className="h-8 w-8" />
+                        <span>Cancelar</span>
+                      </Button>
+                    </div>
+                    <p className="text-sm font-medium text-destructive mt-2">Processando...</p>
+                  </div>
+              ) : (
+                 <div className="flex flex-col items-center gap-4 text-center">
+                    <Button
+                      onClick={startRecording}
+                      disabled={isAiProcessing}
+                      className={cn(
+                        "h-24 w-24 rounded-full",
+                        "flex flex-col items-center justify-center gap-2",
+                        "transition-all duration-300 ease-in-out transform hover:scale-105",
+                        "text-md font-bold shadow-lg"
+                      )}
+                      aria-label="Gravar"
+                    >
+                      <Mic className="h-8 w-8" />
+                      <span>Gravar</span>
+                    </Button>
+                    <div className="text-muted-foreground text-sm">ou</div>
+                    <Button variant="outline" onClick={triggerFileInput}>
+                        <UploadCloud className="mr-2 h-4 w-4" />
+                        Selecione um arquivo (MP3, MP4)
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-2">Você também pode arrastar e soltar um arquivo aqui.</p>
+                 </div>
+              )}
+            </div>
+        )}
         
-        {status === 'processing' && showPlayer && (
+        {status === 'processing' && (
            <div className="flex items-center justify-center gap-2 text-primary font-medium">
              <Loader2 className="h-5 w-5 animate-spin" />
              <span>Transcrevendo, isso pode levar um momento...</span>
@@ -645,7 +788,7 @@ export default function AudioRecorder() {
                 }
                 value={transcript}
                 onChange={(e) => setTranscript(e.target.value)}
-                disabled={isAiProcessing || (status !== 'ready' && status !== 'file-loaded')}
+                disabled={isAiProcessing || (status !== 'ready' && !uploadedFile)}
                 rows={8}
                 className="resize-none bg-secondary/50 rounded-lg text-base select-text"
               />
@@ -801,4 +944,3 @@ export default function AudioRecorder() {
     </Card>
   );
 }
-
