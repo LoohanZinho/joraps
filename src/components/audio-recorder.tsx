@@ -630,7 +630,7 @@ export default function AudioRecorder() {
   };
 
   return (
-    <div className="w-full bg-card rounded-xl border-primary/20 border shadow-sm p-6 space-y-6">
+    <div className="w-full bg-background/50 rounded-xl border border-border shadow-sm p-6 space-y-6">
        {(status === 'error' || expansionStatus === 'error' || rewriteStatus === 'error' || chatStatus === 'error') && error && (
            <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
@@ -783,7 +783,7 @@ export default function AudioRecorder() {
         </div>
 
         {/* Coluna da Direita: Transcrição e Chat */}
-        <div className="space-y-4 flex flex-col">
+        <div className="space-y-4 flex flex-col h-full">
           <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <Label htmlFor="transcription-area" className="text-sm font-medium">Sua Transcrição</Label>
@@ -848,7 +848,7 @@ export default function AudioRecorder() {
           </div>
 
           {transcript && (status === 'ready' || status === 'file-loaded') && (
-            <div className="space-y-4 flex-1 flex flex-col">
+            <div className="space-y-4 flex-1 flex flex-col min-h-0">
                 <Card className="bg-secondary/30 flex-1 flex flex-col">
                     <CardHeader className="pb-2 pt-4">
                         <CardTitle className="text-lg flex items-center gap-2">
@@ -859,7 +859,7 @@ export default function AudioRecorder() {
                             Faça perguntas sobre o conteúdo transcrito.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4 flex-1 flex flex-col">
+                    <CardContent className="space-y-4 flex-1 flex flex-col min-h-0">
                         <ScrollArea className="w-full flex-1 pr-4" ref={chatScrollAreaRef}>
                             <div className="space-y-4">
                                 {chatMessages.map((message, index) => (
@@ -885,7 +885,7 @@ export default function AudioRecorder() {
                                 )}
                             </div>
                         </ScrollArea>
-                        <form onSubmit={handleChatSubmit} className="flex items-center gap-2">
+                        <form onSubmit={handleChatSubmit} className="flex items-center gap-2 pt-2">
                             <Input 
                                 value={chatInput}
                                 onChange={(e) => setChatInput(e.target.value)}
@@ -980,5 +980,3 @@ export default function AudioRecorder() {
     </div>
   );
 }
-
-    
