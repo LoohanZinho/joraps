@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import AudioVisualizer from "./audio-visualizer";
 import { transcribeAudio, expandText, rewriteText, chatAboutContent } from "@/ai/client";
 
-type Status = "idle" | "recording" | "paused" | "processing" | "ready" | "error" | "file-loaded";
+type Status = "idle" | "recording" | "paused" | "processing" | "ready" | "error" | "file-loaded" | "recorded";
 type AiActionStatus = "idle" | "processing" | "error";
 
 interface TranscriptionHistoryItem {
@@ -126,7 +126,6 @@ function CustomMediaPlayer({ file, url, type, onEnded }: { file: File | null, ur
                 <video ref={mediaRef as React.RefObject<HTMLVideoElement>} src={url} className="w-full rounded-lg bg-black" />
             ) : (
                 <div className="w-full h-48 bg-black rounded-lg flex items-center justify-center">
-                    {/* Placeholder para visualização de áudio se desejado */}
                     <p className="text-white font-mono">{file?.name}</p>
                 </div>
             )}
@@ -167,6 +166,52 @@ function CustomMediaPlayer({ file, url, type, onEnded }: { file: File | null, ur
     );
 }
 
+// Componente para a pré-visualização do áudio gravado
+function RecordedPreview({ audioUrl, onCancel, onTranscribe }: { audioUrl: string | null; onCancel: () => void; onTranscribe: () => void; }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      const handleEnd = () => setIsPlaying(false);
+      audio.addEventListener('ended', handleEnd);
+      return () => audio.removeEventListener('ended', handleEnd);
+    }
+  }, []);
+
+  return (
+    <div className="w-full flex flex-col items-center justify-center gap-4">
+      {audioUrl && <audio ref={audioRef} src={audioUrl} />}
+      <div className="flex items-center justify-center w-48 h-48 rounded-full bg-secondary">
+          <Button onClick={togglePlay} variant="ghost" size="icon" className="w-24 h-24 rounded-full bg-background shadow-lg">
+             {isPlaying ? <Pause className="h-10 w-10 text-primary" /> : <Play className="h-10 w-10 text-primary" />}
+          </Button>
+      </div>
+      <div className="flex gap-4">
+        <Button variant="outline" size="lg" onClick={onCancel}>
+          <Trash2 className="mr-2 h-5 w-5" />
+          Cancelar
+        </Button>
+        <Button size="lg" className="bg-accent hover:bg-accent/90" onClick={onTranscribe}>
+          <Send className="mr-2 h-5 w-5" />
+          Transcrever
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function AudioRecorder() {
   const [status, setStatus] = useState<Status>("idle");
   const [expansionStatus, setExpansionStatus] = useState<AiActionStatus>("idle");
@@ -183,6 +228,7 @@ export default function AudioRecorder() {
   const [dragOver, setDragOver] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
+  const [recordedAudio, setRecordedAudio] = useState<{ blob: Blob; url: string; } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
 
@@ -270,6 +316,8 @@ export default function AudioRecorder() {
         console.error("Transcription failed:", e);
         setError(getErrorMessage(e));
         setStatus("error");
+    } finally {
+        setRecordedAudio(null); // Limpa o áudio gravado após tentativa de transcrição
     }
   }, [isNoiseSuppressionEnabled, chatMessages, uploadedFile]);
 
@@ -347,6 +395,7 @@ export default function AudioRecorder() {
       setError(null);
       setRecordingTime(0);
       setChatMessages([]);
+      setRecordedAudio(null);
       audioChunksRef.current = [];
       const mimeTypes = [
         "audio/webm; codecs=opus",
@@ -370,11 +419,13 @@ export default function AudioRecorder() {
 
       mediaRecorderRef.current.onstop = () => {
         if (isCancelledRef.current) {
-            console.log("Transcrição cancelada pelo usuário.");
+            console.log("A gravação foi cancelada, não será transcrita.");
             return;
         }
         const recordedAudioBlob = new Blob(audioChunksRef.current, { type: supportedMimeType });
-        handleTranscription(recordedAudioBlob);
+        const url = URL.createObjectURL(recordedAudioBlob);
+        setRecordedAudio({ blob: recordedAudioBlob, url });
+        setStatus("recorded");
       };
 
       mediaRecorderRef.current.start();
@@ -405,7 +456,7 @@ export default function AudioRecorder() {
       setError(errorMessage);
       setStatus("error");
     }
-  }, [handleTranscription]);
+  }, []);
   
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && (status === "recording" || status === "paused")) {
@@ -568,6 +619,14 @@ export default function AudioRecorder() {
   const isAiProcessing = expansionStatus === "processing" || rewriteStatus === "processing" || chatStatus === "processing";
   const showPlayer = !!uploadedFileUrl;
   
+  const cancelAndReset = () => {
+    if (recordedAudio?.url) {
+      URL.revokeObjectURL(recordedAudio.url);
+    }
+    setRecordedAudio(null);
+    setStatus("idle");
+  };
+
   return (
     <div className="w-full bg-card rounded-xl border-primary/20 border shadow-sm p-6 space-y-6">
        {(status === 'error' || expansionStatus === 'error' || rewriteStatus === 'error' || chatStatus === 'error') && error && (
@@ -604,6 +663,8 @@ export default function AudioRecorder() {
                     "flex flex-col justify-center items-center py-4 w-full h-full min-h-[180px] gap-4 border-2 border-dashed rounded-lg transition-colors duration-200",
                     {"border-primary bg-primary/10": dragOver},
                     {"border-border": !dragOver},
+                    // Ocultar a borda tracejada quando estiver mostrando a pré-visualização da gravação
+                    {"border-transparent": status === 'recorded'}
                   )}
                   onDrop={handleDrop}
                   onDragEnter={handleDragEvents}
@@ -665,6 +726,16 @@ export default function AudioRecorder() {
                       </div>
                       <p className="text-sm font-medium text-destructive mt-2">Processando...</p>
                     </div>
+                 ) : status === 'recorded' ? (
+                  <RecordedPreview
+                    audioUrl={recordedAudio?.url || null}
+                    onCancel={cancelAndReset}
+                    onTranscribe={() => {
+                      if (recordedAudio) {
+                        handleTranscription(recordedAudio.blob);
+                      }
+                    }}
+                  />
                 ) : (
                    <div className="flex flex-col items-center gap-4 text-center">
                       <Button
@@ -751,6 +822,7 @@ export default function AudioRecorder() {
                     status === 'paused' ? 'Gravação pausada...' :
                     status === 'processing' ? 'Sua transcrição aparecerá aqui em breve...' :
                     status === 'file-loaded' && uploadedFile ? `Pronto para transcrever "${uploadedFile?.name}". Clique em "Transcrever Arquivo".` :
+                    status === 'recorded' ? 'Pronto para transcrever. Clique em "Transcrever".' :
                     'Sua transcrição aparecerá aqui...'
                   }
                   value={transcript}
@@ -906,3 +978,5 @@ export default function AudioRecorder() {
     </div>
   );
 }
+
+    
