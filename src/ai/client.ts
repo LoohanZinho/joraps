@@ -31,8 +31,8 @@ const safetySettings = [
   },
 ];
 
-const transcriptionModels = ['gemini-1.5-flash', 'gemini-1.5-pro'];
-const mainModelName = 'gemini-1.5-flash';
+const transcriptionModels = ['gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+const mainModelName = 'gemini-2.5-flash-lite';
 
 const mainModel = genAI.getGenerativeModel({
   model: mainModelName,
